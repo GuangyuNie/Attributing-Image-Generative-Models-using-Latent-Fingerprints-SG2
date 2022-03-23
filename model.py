@@ -506,18 +506,18 @@ class Generator(nn.Module):
         truncation_latent=None,
         input_is_latent=False,
         noise=None,
-        randomize_noise=False,
+        fixed_noise=False,
     ):
         if not input_is_latent:
             styles = [self.style(s) for s in styles]
 
         if noise is None:
-            if randomize_noise:
-                noise = [None] * self.num_layers
-            else:
+            if fixed_noise:
                 noise = [
                     getattr(self.noises, f"noise_{i}") for i in range(self.num_layers)
                 ]
+            else:
+                noise = [None] * self.num_layers
         if not input_is_latent:
             if truncation < 1:
                 style_t = []
