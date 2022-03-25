@@ -10,32 +10,30 @@ import torchvision.transforms as T
 import scipy.stats.qmc as scipy_stats
 import time
 import numpy as np
+import argparse
+
 
 class watermark_optimization:
     def __init__(self):
         # Define hyper parameter
-        np.random.seed(2022)
-        # for cuda
         self.device = 'cuda:0'
-        self.ckpt = './checkpoint/550000.pt'
+        self.ckpt = args.ckpt
         self.n_mean_latent = 10000  # num of style vector to sample
-        self.steps = 1000 # Num steps for optimizing
-        self.img_size = 256  # image size
+        self.steps = args.steps  # Num steps for optimizing
+        self.img_size = args.img_size  # image size
+        self.key_len = args.key_len
         self.style_space_dim = 512
+        self.num_main_pc = self.style_space_dim - self.key_len
         self.mapping_network_layer = 8
-        self.critical_point = 448  # 512 - 64, num of high var pc
-        self.sd_moved = 6  # How many standard deviation to move
+        self.sd_moved = args.sd  # How many standard deviation to move
         self.lr = 0.2
-        self.key_len = self.style_space_dim - self.critical_point
-        self.save_dir = './projection_Test/trials_alpha_mean_final/'
+        self.save_dir = args.save_dir
         self.relu = torch.nn.ReLU()
         # Get generator
         g_ema = Generator(self.img_size, self.style_space_dim, self.mapping_network_layer)
         g_ema.load_state_dict(torch.load(self.ckpt)["g_ema"], strict=False)  # load ckpt
         g_ema.eval()  # set to eval mode
         self.g_ema = g_ema.to(self.device)  # push to device
-
-
 
     def get_loss(self, img1, img2, loss_func='mse'):
         """Loss function, default: MSE loss"""
@@ -95,9 +93,8 @@ class watermark_optimization:
         """Image postprocessing for output"""
         return (tensor.detach()
                 .mul(2)
-                 .sub(1)
-        )
-
+                .sub(1)
+                )
 
     def penalty_1(self, latent, upper, lower):
         """penalty for alpha that exceed the boundary"""
@@ -106,7 +103,8 @@ class watermark_optimization:
 
         return penalty1 + penalty2
 
-    def store_results(self, w0_reconstructed, wx_reconstructed,  w0, wx, key,iter=None):
+
+    def store_results(self, w0_reconstructed, wx_reconstructed, w0, wx, key, iter=None):
         if iter == None:
             pass
         else:
@@ -144,19 +142,58 @@ class watermark_optimization:
 
         return noises
 
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Image generator for generating perturbed images"
+    )
+    parser.add_argument(
+        "--ckpt", type=str, default='./checkpoint/550000.pt', required=False, help="path to the model checkpoint"
+    )
+    parser.add_argument(
+        "--img_size", type=int, default=256, help="output image sizes of the generator"
+    )
+    parser.add_argument(
+        "--steps", type=int, default=2000, help="Number of optimization steps"
+    )
+    parser.add_argument(
+        "--sd", type=int, default=6, help="Standard deviation moved"
+    )
+    parser.add_argument(
+        "--n", type=int, default=20, help="Number of samples for Latin hypercube sampling method"
+    )
+    parser.add_argument(
+        "--num_tests", type=int, default=1000, help="Number of tests, plz make sure you have enough test samples"
+    )
+
+    parser.add_argument(
+        "--key_len", type=int, default=64, help="Number of digit for the binary key"
+    )
+
+    parser.add_argument(
+        "--save_dir", type=str, default='./result_image/', help="Directory for image output and acc result"
+    )
+
+    parser.add_argument(
+        "--test_dir", type=str, default='./test_images/', help="Directory for image output and acc result"
+    )
+    args = parser.parse_args()
 
     optim = watermark_optimization()
 
-    start = time.time() # count times to complete
-    pca = torch.load("./test_images/pca.pt")
-    target_image_raw = torch.load("./test_images/target_img_total.pt")
+    start = time.time()  # count times to complete
+    pca = torch.load(args.test_dir + "pca.pt")
+    target = torch.load(args.test_dir + 'test_data.pt')
 
-    sigma_64 = pca['sigma_64'].to(device=optim.device).view(-1,1)
-    sigma_512 = pca['sigma_512'].to(device=optim.device).view(-1,1)
+    sigma_64 = pca['sigma_64'].to(device=optim.device).view(-1, 1)
+    sigma_512 = pca['sigma_512'].to(device=optim.device).view(-1, 1)
     v_cap = pca['v_cap'].to(device=optim.device)
     u_cap = pca['u_cap'].to(device=optim.device)
     latent_mean = pca['latent_mean'].to(device=optim.device)
+
+    target_k_total = target['key']
+    target_wx_total = target['wx']
+    target_w0_total = target['w0']
 
     # Get projections of the latent mean(for initial guess)
     v_cap_t = torch.transpose(v_cap, 0, 1)
@@ -166,43 +203,42 @@ if __name__ == "__main__":
     u_cap_t = torch.transpose(u_cap, 0, 1)
     ata = torch.inverse(torch.matmul(u_cap, torch.transpose(u_cap, 0, 1)))
     projection_u = torch.matmul(torch.matmul(torch.matmul(u_cap_t, ata), u_cap), latent_mean)
-    sigma_448 = sigma_512[0:optim.critical_point, :]
+    sigma_448 = sigma_512[0:optim.num_main_pc, :]
 
     # Get the boundary of alpha
     alpha_bar, _ = torch.lstsq(projection_u,
                                torch.transpose(u_cap, 0, 1))  # solve for init of for alpha = [512x1] tensor
-    alpha_bar = alpha_bar[0:optim.critical_point, :]  # solution for alpha = [448 x 1] tensor
+    alpha_bar = alpha_bar[0:optim.num_main_pc, :]  # solution for alpha = [448 x 1] tensor
     max_alpha = alpha_bar + 3 * sigma_448
     min_alpha = alpha_bar - 3 * sigma_448
 
-
     noise = optim.get_noise()
-    tests = 10  # Number of image tests
-    early_termination = 0.0002  # Terminate the optimization if loss is below this number
+    tests = args.num_tests  # Number of image tests
+    early_termination = 0.0005  # Terminate the optimization if loss is below this number
     success = 0  # count number of success
     acc_total = []
     # Import perceptual loss, cosine similarity and sigmoid function
     cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
     sigmoid = torch.nn.Sigmoid()
     # Import Latin Hypercube Sampling method
-    samlping = scipy_stats.LatinHypercube(d=optim.critical_point, centered=True)
-    target_k_total = torch.load("./test_images/store_key.pt")
-    target_wx_total = torch.load("./test_images/store_wx.pt")
+    samlping = scipy_stats.LatinHypercube(d=optim.num_main_pc, centered=True)
     percept = lpips.PerceptualLoss(model="net-lin", net="vgg", use_gpu=optim.device.startswith("cuda"))
     for iter in range(tests):
         loss = []
         a = []
         k = []
-        image = Image.open('./test_images/perturbed_image/target_wx_{}.png'.format(iter)).convert('RGB')
+        image = Image.open(args.test_dir + 'perturbed_image/target_wx_{}.png'.format(iter)).convert('RGB')
         transform = T.ToTensor()
         tensor = transform(image)
         target_img = optim.get_image(tensor).to(optim.device)
         target_k = target_k_total[iter].to(optim.device)
-        target_k = target_k.view(-1,1)
+        target_k = target_k.view(-1, 1)
         target_wx = target_wx_total[iter].to(optim.device)
-        sample = samlping.random(n=20)  # Sample init guesses
+        target_w0 = target_w0_total[iter].to(optim.device)
+        sample = samlping.random(n=args.n)  # Sample init guesses
         sample = torch.tensor(sample, dtype=torch.float32, device=optim.device).detach()
         for alpha in sample:
+            # conversion_error = torch.zeros(3, 256, 256).to(optim.device)
             lr_decay_rate = 4
             lr_segment = lr_decay_rate - 1
             alpha = alpha.view(-1, 1)
@@ -210,7 +246,7 @@ if __name__ == "__main__":
             alpha.requires_grad = True
             key = optim.key_init_guess()
             key.requires_grad = True
-            optimizer = torch.optim.Adam([alpha,key],lr=optim.lr)
+            optimizer = torch.optim.Adam([alpha, key], lr=optim.lr)
 
             lr = optim.lr
             for i in tqdm(range(optim.steps)):
@@ -221,7 +257,6 @@ if __name__ == "__main__":
                 estimated_image = optim.generate_image(wx, noise)
                 loss_1 = optim.get_loss(target_img, estimated_image, loss_func="perceptual")
                 loss_total = loss_1 + 0.1 * optim.penalty_1(alpha, max_alpha, min_alpha)
-                # Early termination if init guess not promising
                 if i > optim.steps / 4:
                     if loss_total > 0.3:
                         break
@@ -244,7 +279,7 @@ if __name__ == "__main__":
                 if (i + 1) % 10 == 0:
                     print("w0 loss: {}".format(loss_total.item()))
                     print('cosine similarity of style vector: {}'
-                          .format(cos(wx.view(-1), target_wx.view(-1))))
+                          .format(cos(w0.view(-1), target_w0.view(-1))))
 
             if loss_total <= early_termination:
                 break
@@ -263,24 +298,9 @@ if __name__ == "__main__":
             key = k[index]
 
         alpha = alpha.detach()
-        # print(optim.calculate_classification_acc(torch.round(sigmoid(key))))
         w0 = torch.matmul(torch.transpose(u_cap, 0, 1), alpha)
         w0 = w0.detach()
         estimated_w0 = optim.generate_image(w0, noise)
-        # optimizer = torch.optim.Adam([key], lr=1)
-        # step = 500
-        # for i in tqdm(range(step)):
-        #     optim.g_ema.zero_grad()
-        #     optimizer.zero_grad()
-        #     wx = optim.get_new_latent(v_cap, sigma_64, sigmoid(key), w0)
-        #     estimated_image = optim.generate_image(wx,noise)
-        #     loss = optim.get_loss(target_img, estimated_image)
-        #     loss.backward(retain_graph=True)
-        #     optimizer.step()
-        #     if (i+1) % 10 == 0:
-        #         print("Taylor loss: {}, w0 loss: {}".format(loss.item(), loss.item()))
-
-        # Make images for inspection
         wx = optim.get_new_latent(v_cap, sigma_64, sigmoid(key), w0)
         wx_estimated_image = optim.generate_image(wx, noise)
         w0_reconstructed = optim.make_image(estimated_w0)
@@ -290,8 +310,7 @@ if __name__ == "__main__":
               .format(cos(key_retrived, target_k), cos(wx.view(-1), target_wx.view(-1))))
         optim.store_results(w0_reconstructed, wx_reconstructed, w0, wx,
                             sigmoid(key), iter)
-        acc = optim.calculate_classification_acc(torch.round(sigmoid(key)),target_k)
-        # print((key_retrived, optim.key))
+        acc = optim.calculate_classification_acc(torch.round(sigmoid(key)), target_k)
         print(acc)
         acc_total.append(acc)
         if acc == 1.0:
@@ -302,4 +321,5 @@ if __name__ == "__main__":
         with open(optim.save_dir + 'listfile.txt', 'w') as filehandle:
             for listitem in acc_total:
                 filehandle.write('%s\n' % listitem)
+
 

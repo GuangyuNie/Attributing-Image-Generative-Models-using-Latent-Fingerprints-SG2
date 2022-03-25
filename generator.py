@@ -8,23 +8,23 @@ from model import Generator
 import torchvision.transforms as T
 import time
 import numpy as np
+import argparse
 
 class watermark_optimization:
     def __init__(self):
         # Define hyper parameter
-        np.random.seed(2022)
         self.device = 'cuda:0'
-        self.ckpt = './checkpoint/550000.pt'
+        self.ckpt = args.ckpt
         self.n_mean_latent = 10000  # num of style vector to sample
-        self.img_size = 256  # image size
+        self.img_size = args.img_size  # image size
         self.style_space_dim = 512
-        self.batch_size = 16
+        self.key_len = args.key_len
+        self.batch_size = args.batch_size
         self.mapping_network_layer = 8
-        self.critical_point = 448  # 512 - 64, num of high var pc
-        self.sd_moved = 6  # How many standard deviation to move
+        self.num_main_pc = self.style_space_dim - self.key_len  # 512 - 64, num of high var pc
+        self.sd_moved = args.sd  # How many standard deviation to move
         self.lr = 0.2
-        self.key_len = self.style_space_dim - self.critical_point
-        self.save_dir = './test_images/'
+        self.save_dir = args.save_dir
         self.relu = torch.nn.ReLU()
         # Get generator
         g_ema = Generator(self.img_size, self.style_space_dim, self.mapping_network_layer)
@@ -45,15 +45,15 @@ class watermark_optimization:
             latent_mean = latent_out.mean(0)
             latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
         # Get V and U
-        var_64 = torch.tensor(var[self.critical_point:512], dtype=torch.float32, device=self.device)  # [64,]
+        var_64 = torch.tensor(var[self.num_main_pc:512], dtype=torch.float32, device=self.device)  # [64,]
         var_64 = var_64.view(-1, 1)  # [64, 1]
         var_512 = torch.tensor(var, dtype=torch.float32, device=self.device)  # [64,]
         var_512 = var_512.view(-1, 1)  # [64, 1]
         sigma_64 = torch.sqrt(var_64)
         sigma_512 = torch.sqrt(var_512)
-        v_cap = torch.tensor(pc[self.critical_point:512, :], dtype=torch.float32,
+        v_cap = torch.tensor(pc[self.num_main_pc:512, :], dtype=torch.float32,
                              device=self.device)  # low var pc [64x512]
-        u_cap = torch.tensor(pc[0:self.critical_point, :], dtype=torch.float32,
+        u_cap = torch.tensor(pc[0:self.num_main_pc, :], dtype=torch.float32,
                              device=self.device)  # high var pc [448x512]
         pc = torch.tensor(pc, dtype=torch.float32,
                           device=self.device)  # full pc [512x512]
@@ -89,7 +89,6 @@ class watermark_optimization:
         new_latent = new_latent.detach()
         return imgs, latent_out, new_latent
 
-
     def make_image(self, tensor):
         """Image postprocessing for output"""
         return (
@@ -108,20 +107,20 @@ class watermark_optimization:
     def store_results(self, original_image_w0, original_image_wx, iter):
         store_path_w0 = 'image_before_perturb/'
         store_path_wx = 'perturbed_image/'
-        isExist = os.path.exists(self.save_dir+store_path_w0)
+        isExist = os.path.exists(self.save_dir + store_path_w0)
         if not isExist:
-            os.makedirs(self.save_dir+store_path_w0)
+            os.makedirs(self.save_dir + store_path_w0)
 
-        isExist = os.path.exists(self.save_dir+store_path_wx)
+        isExist = os.path.exists(self.save_dir + store_path_wx)
         if not isExist:
-            os.makedirs(self.save_dir+store_path_wx)
-
-        img_name = self.save_dir + store_path_w0 + "target_w0_{}.png".format(iter)
-        pil_img = Image.fromarray(original_image_w0[0])
-        pil_img.save(img_name)
-        img_name = self.save_dir + store_path_wx + "target_wx_{}.png".format(iter)
-        pil_img = Image.fromarray(original_image_wx[0])
-        pil_img.save(img_name)
+            os.makedirs(self.save_dir + store_path_wx)
+        for i in range(self.batch_size):
+            img_name = self.save_dir + store_path_w0 + "target_w0_{}.png".format(self.batch_size*iter + i)
+            pil_img = Image.fromarray(original_image_w0[i])
+            pil_img.save(img_name)
+            img_name = self.save_dir + store_path_wx + "target_wx_{}.png".format(self.batch_size*iter + i)
+            pil_img = Image.fromarray(original_image_wx[i])
+            pil_img.save(img_name)
 
     def generate_image(self, style_vector, noise):
         """generate image given style vector and noise"""
@@ -167,7 +166,39 @@ class watermark_optimization:
 
 if __name__ == "__main__":
 
-    start = time.time() # count times to complete
+    parser = argparse.ArgumentParser(
+        description="Image generator for generating perturbed images"
+    )
+    parser.add_argument(
+        "--ckpt", type=str, default='./checkpoint/550000.pt', required=False, help="path to the model checkpoint"
+    )
+    parser.add_argument(
+        "--img_size", type=int, default=256, help="output image sizes of the generator"
+    )
+    parser.add_argument(
+        "--sample_size", type=int, default=30, help="Number of sample generated"
+    )
+    parser.add_argument(
+        "--sd", type=int, default=6, help="Standard deviation moved"
+    )
+
+    parser.add_argument(
+        "--batch_size", type=int, default=16, help="Batch size for generating images"
+    )
+
+    parser.add_argument(
+        "--key_len", type=int, default=64, help="Number of digit for the binary key"
+    )
+
+    parser.add_argument(
+        "--save_dir", type=str, default='./test_images/', help="Directory for image saving"
+    )
+    parser.add_argument(
+        "--augmentation", type=str, default='None', help="Augmentation method"
+    )
+    args = parser.parse_args()
+
+    start = time.time()  # count times to complete
     optim = watermark_optimization()
     sigma_64, v_cap, u_cap, _, sigma_512, latent_mean, latent_std = optim.PCA()
     # Get projections of the latent mean(for initial guess)
@@ -178,46 +209,52 @@ if __name__ == "__main__":
     u_cap_t = torch.transpose(u_cap, 0, 1)
     ata = torch.inverse(torch.matmul(u_cap, torch.transpose(u_cap, 0, 1)))
     projection_u = torch.matmul(torch.matmul(torch.matmul(u_cap_t, ata), u_cap), latent_mean)
-    sigma_448 = sigma_512[0:optim.critical_point, :]
+    sigma_448 = sigma_512[0:optim.num_main_pc, :]
 
     # Get the boundary of alpha
     alpha_bar, _ = torch.lstsq(projection_u,
                                torch.transpose(u_cap, 0, 1))  # solve for init of for alpha = [512x1] tensor
-    alpha_bar = alpha_bar[0:optim.critical_point, :]  # solution for alpha = [448 x 1] tensor
+    alpha_bar = alpha_bar[0:optim.num_main_pc, :]  # solution for alpha = [448 x 1] tensor
     max_alpha = alpha_bar + 3 * sigma_448
     min_alpha = alpha_bar - 3 * sigma_448
 
     noise = optim.get_noise()
 
-    number_of_images = 3000
+    number_of_images = args.sample_size
     key = []
     wx = []
-    target_img_total = []
+    w0 = []
     # Get batched
     alpha_bar = alpha_bar.repeat(1, optim.batch_size)
     sigma_448 = sigma_448.repeat(1, optim.batch_size)
-    sigma_64 = sigma_64.repeat(1,optim.batch_size)
-    for iter in tqdm(range(int(number_of_images/optim.batch_size)+1)):
-        rand_alpha = torch.multiply(sigma_448, torch.randn((optim.critical_point, optim.batch_size), device=optim.device)) + alpha_bar
+    sigma_64 = sigma_64.repeat(1, optim.batch_size)
+    for iter in tqdm(range(int(number_of_images / optim.batch_size) + 1)):
+        rand_alpha = torch.multiply(sigma_448, torch.randn((optim.num_main_pc, optim.batch_size),
+                                                           device=optim.device)) + alpha_bar
         target_img, target_w0, target_wx = optim.generate_with_alpha(rand_alpha, u_cap_t, sigma_64, v_cap, noise)
-        # target_img = optim.augmentation(target_img)
         original_image = optim.generate_image(target_w0, noise)
         w0_image = optim.make_image(original_image)
         wx_image = optim.make_image(target_img)
         for i in range(optim.batch_size):
             wx.append(target_wx[i])
-            key.append(optim.key[:,i])
+            w0.append(target_w0[i])
+            key.append(optim.key[:, i])
         optim.store_results(w0_image, wx_image, iter)
 
-    torch.save(wx,optim.save_dir+'store_wx.pt')
-    torch.save(key,optim.save_dir+'store_key.pt')
+    result_file = {
+        "wx": wx,
+        "w0": w0,
+        "key": key,
+    }
+    torch.save(result_file, optim.save_dir + 'test_data.pt')
+
     result_file = {
         "sigma_512": sigma_512,
-        "sigma_64": sigma_64[:,0],
+        "sigma_64": sigma_64[:, 0],
         "v_cap": v_cap,
         "u_cap": u_cap,
         "latent_mean": latent_mean,
     }
-    torch.save(result_file, optim.save_dir+'pca.pt')
+    torch.save(result_file, optim.save_dir + 'pca.pt')
 
 

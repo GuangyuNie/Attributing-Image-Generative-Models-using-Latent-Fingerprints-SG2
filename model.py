@@ -2,7 +2,7 @@ import math
 import random
 import functools
 import operator
-
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -401,7 +401,7 @@ class Generator(nn.Module):
         super().__init__()
 
         self.size = size
-
+        np.random.seed(2022)
         self.style_dim = style_dim
 
         layers = [PixelNorm()]
