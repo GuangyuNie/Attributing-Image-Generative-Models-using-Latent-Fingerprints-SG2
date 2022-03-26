@@ -11,7 +11,7 @@ import numpy as np
 import argparse
 
 class watermark_optimization:
-    def __init__(self):
+    def __init__(self, args):
         # Define hyper parameter
         self.device = 'cuda:0'
         self.ckpt = args.ckpt
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     start = time.time()  # count times to complete
-    optim = watermark_optimization()
+    optim = watermark_optimization(args)
     sigma_64, v_cap, u_cap, _, sigma_512, latent_mean, latent_std = optim.PCA()
     # Get projections of the latent mean(for initial guess)
     v_cap_t = torch.transpose(v_cap, 0, 1)
