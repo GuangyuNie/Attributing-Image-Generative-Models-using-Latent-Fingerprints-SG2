@@ -35,15 +35,21 @@ class watermark_optimization:
     def PCA(self):
         """Do PCA"""
         pca = PCA()
-        with torch.no_grad():
-            noise_sample = torch.randn(self.n_mean_latent, 512, device=self.device)  # get a bunch of Z
-            latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
-            latent_out = latent_out.detach().cpu().numpy()
-            pca.fit(latent_out)  # do pca for the style vector data distribution
-            var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
-            pc = pca.components_  # get the pc ranked from high var to low var
-            latent_mean = latent_out.mean(0)
-            latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
+
+        if os.path.isfile('./PCA/pca.pt'):
+            pca_dict = torch.load('./PCA/pca.pt')
+            return pca_dict['sigma_64'], pca_dict['v_cap'], pca_dict['u_cap'], None, pca_dict['sigma_512'], pca_dict['latent_mean'], None
+        else:
+            with torch.no_grad():
+                noise_sample = torch.randn(self.n_mean_latent, 512, device=self.device)  # get a bunch of Z
+                latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
+                latent_out = latent_out.detach().cpu().numpy()
+                pca.fit(latent_out)  # do pca for the style vector data distribution
+
+        var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+        pc = pca.components_  # get the pc ranked from high var to low var
+        latent_mean = latent_out.mean(0)
+        latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
         # Get V and U
         var_64 = torch.tensor(var[self.num_main_pc:512], dtype=torch.float32, device=self.device)  # [64,]
         var_64 = var_64.view(-1, 1)  # [64, 1]
@@ -78,8 +84,8 @@ class watermark_optimization:
         n: fixed noise
         """
         self.key = torch.randint(2, (self.key_len, self.batch_size), device=self.device)  # Get random key
-        latent_out = torch.transpose(torch.matmul(u_cap_t, alpha), 0, 1)
-        sk_real = torch.multiply(sigma_64, self.key)
+        latent_out = torch.transpose(torch.matmul(u_cap_t, alpha), 0, 1) #to check cosine similarity between alpha used for generating images and reconstructed alpha in classifier code.
+        sk_real = torch.multiply(sigma_64, self.key) #considers only positive part.
         new_latent = latent_out + self.sd_moved * torch.matmul(torch.transpose(sk_real, 0, 1), v_cap)
         imgs, _ = self.g_ema(
             [new_latent], noise=noise, input_is_latent=True)
@@ -204,7 +210,7 @@ if __name__ == "__main__":
     # Get projections of the latent mean(for initial guess)
     v_cap_t = torch.transpose(v_cap, 0, 1)
     ata = torch.inverse(torch.matmul(v_cap, torch.transpose(v_cap, 0, 1)))
-    projection_v = torch.matmul(torch.matmul(torch.matmul(v_cap_t, ata), v_cap), latent_mean)
+    projection_v = torch.matmul(torch.matmul(torch.matmul(v_cap_t, ata), v_cap), latent_mean) #not used
 
     u_cap_t = torch.transpose(u_cap, 0, 1)
     ata = torch.inverse(torch.matmul(u_cap, torch.transpose(u_cap, 0, 1)))
@@ -214,7 +220,7 @@ if __name__ == "__main__":
     # Get the boundary of alpha
     alpha_bar, _ = torch.lstsq(projection_u,
                                torch.transpose(u_cap, 0, 1))  # solve for init of for alpha = [512x1] tensor
-    alpha_bar = alpha_bar[0:optim.num_main_pc, :]  # solution for alpha = [448 x 1] tensor
+    alpha_bar = alpha_bar[0:optim.num_main_pc, :]  # solution for alpha = [448 x 1] tensor =>
     max_alpha = alpha_bar + 3 * sigma_448
     min_alpha = alpha_bar - 3 * sigma_448
 
@@ -227,6 +233,7 @@ if __name__ == "__main__":
     # Get batched
     alpha_bar = alpha_bar.repeat(1, optim.batch_size)
     sigma_448 = sigma_448.repeat(1, optim.batch_size)
+    sigma_64 = sigma_64.unsqueeze(1)
     sigma_64 = sigma_64.repeat(1, optim.batch_size)
     for iter in tqdm(range(int(number_of_images / optim.batch_size) + 1)):
         rand_alpha = torch.multiply(sigma_448, torch.randn((optim.num_main_pc, optim.batch_size),
@@ -250,7 +257,7 @@ if __name__ == "__main__":
 
     result_file = {
         "sigma_512": sigma_512,
-        "sigma_64": sigma_64[:, 0],
+        "sigma_64": sigma_64[:, 0], #todo fix dimension error
         "v_cap": v_cap,
         "u_cap": u_cap,
         "latent_mean": latent_mean,
