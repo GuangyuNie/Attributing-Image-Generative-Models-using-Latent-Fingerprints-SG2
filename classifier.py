@@ -16,7 +16,8 @@ import argparse
 class watermark_optimization:
     def __init__(self):
         # Define hyper parameter
-        self.device = 'cuda:0'
+        self.device_ids = 0
+        self.device = 'cuda:{}'.format(self.device_ids)
         self.ckpt = args.ckpt
         self.n_mean_latent = 10000  # num of style vector to sample
         self.steps = args.steps  # Num steps for optimizing
@@ -74,6 +75,10 @@ class watermark_optimization:
         key_acc = torch.sum(approx_key == target_key)
         acc = key_acc / self.key_len
         return acc
+
+    # def latent_noise(self,latent, strength):
+    #     noise = torch.randn_like(latent) * strength
+    #     return latent + noise
 
     def make_image(self, tensor):
         """Image postprocessing for output"""
@@ -180,7 +185,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     optim = watermark_optimization()
-
+    args.test_dir = args.test_dir +"key_{}/".format(args.key_len)
+    args.save_dir = args.save_dir +"key_{}/".format(args.key_len)
     start = time.time()  # count times to complete
     pca = torch.load(args.test_dir + "pca.pt")
     target = torch.load(args.test_dir + 'test_data.pt')
@@ -222,7 +228,7 @@ if __name__ == "__main__":
     sigmoid = torch.nn.Sigmoid()
     # Import Latin Hypercube Sampling method
     samlping = scipy_stats.LatinHypercube(d=optim.num_main_pc, centered=True)
-    percept = lpips.PerceptualLoss(model="net-lin", net="vgg", use_gpu=optim.device.startswith("cuda"))
+    percept = lpips.PerceptualLoss(model="net-lin", net="vgg", use_gpu=optim.device.startswith("cuda"),gpu_ids=[optim.device_ids])
     for iter in range(tests):
         loss = []
         a = []
@@ -247,7 +253,7 @@ if __name__ == "__main__":
             key = optim.key_init_guess()
             key.requires_grad = True
             optimizer = torch.optim.Adam([alpha, key], lr=optim.lr)
-
+            early_terminate = False
             lr = optim.lr
             for i in tqdm(range(optim.steps)):
                 optim.g_ema.zero_grad()
@@ -257,46 +263,47 @@ if __name__ == "__main__":
                 estimated_image = optim.generate_image(wx, noise)
                 loss_1 = optim.get_loss(target_img, estimated_image, loss_func="perceptual")
                 loss_total = loss_1 + 0.1 * optim.penalty_1(alpha, max_alpha, min_alpha)
-                if i > optim.steps / 4:
-                    if loss_total > 0.3:
-                        break
-                if i > optim.steps / 2:
-                    if loss_total > 0.2:
-                        break
+                if i > optim.steps / 4 and loss_total > 0.2:
+                    break
+                if i > optim.steps / 2 and loss_total > 0.1:
+                    break
+                if cos(w0.view(-1), target_w0.view(-1)) > 0.995: # Todo: Delete all early termination methods
+                    early_terminate = True
 
                 # Discrete learning rate decay
-                if (i + 1) % int(optim.steps / lr_decay_rate) == 0:
-                    lr = lr_segment * optim.lr / lr_decay_rate
-                    lr_segment -= 1
-                    optimizer.param_groups[0]["lr"] = lr
-                    print(lr)
-                if loss_total <= early_termination:
-                    break
+                decay = 0.001
+                lr = optim.lr * math.exp(-decay * (i+1))
+                optimizer.param_groups[0]["lr"] = lr
+                # if (i + 1) % int(optim.steps / lr_decay_rate) == 0:
+                #     lr = lr_segment * optim.lr / lr_decay_rate
+                #     lr_segment -= 1
+                #     optimizer.param_groups[0]["lr"] = lr
+                #     print(lr)
 
                 loss_total.backward()
                 optimizer.step()
 
-                if (i + 1) % 10 == 0:
-                    print("w0 loss: {}".format(loss_total.item()))
-                    print('cosine similarity of style vector: {}'
+                if (i + 1) % 100 == 0:
+                    print("\nlearning rate is {:.4f}".format(lr))
+                    print("Perceptual loss: {:.6f}".format(loss_total.item()))
+                    print('Cosine similarity of w0: {:.4f}'
                           .format(cos(w0.view(-1), target_w0.view(-1))))
 
-            if loss_total <= early_termination:
+            if early_terminate == True:
                 break
             else:
                 loss.append(loss_total.item())
                 a.append(alpha)
                 k.append(key)
-
+            print('Among {} tests, success rate is: {:.4f}'.format(iter + 1, success / (iter + 1)))
         # If early terminated, pick the last one, else, pick the one with min loss
-        if loss_total <= early_termination:
+        if early_terminate == True:
             pass
         else:
             min_item = min(loss)
             index = loss.index(min_item)
             alpha = a[index]
             key = k[index]
-
         alpha = alpha.detach()
         w0 = torch.matmul(torch.transpose(u_cap, 0, 1), alpha)
         w0 = w0.detach()
@@ -319,7 +326,7 @@ if __name__ == "__main__":
         end = time.time()
         print('time taken for optimization:', end - start)
         with open(optim.save_dir + 'listfile.txt', 'w') as filehandle:
-            for listitem in acc_total:
-                filehandle.write('%s\n' % listitem)
+            for i, listitem in enumerate(acc_total):
+                filehandle.write('\n {} {}'.format(i,listitem.item()))
 
 

@@ -13,7 +13,8 @@ import argparse
 class watermark_optimization:
     def __init__(self, args):
         # Define hyper parameter
-        self.device = 'cuda:0'
+        self.device_ids = 0
+        self.device = 'cuda:{}'.format(self.device_ids)
         self.ckpt = args.ckpt
         self.n_mean_latent = 10000  # num of style vector to sample
         self.img_size = args.img_size  # image size
@@ -45,11 +46,10 @@ class watermark_optimization:
                 latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
                 latent_out = latent_out.detach().cpu().numpy()
                 pca.fit(latent_out)  # do pca for the style vector data distribution
-
-        var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
-        pc = pca.components_  # get the pc ranked from high var to low var
-        latent_mean = latent_out.mean(0)
-        latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
+                var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+                pc = pca.components_  # get the pc ranked from high var to low var
+                latent_mean = latent_out.mean(0)
+                latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
         # Get V and U
         var_64 = torch.tensor(var[self.num_main_pc:512], dtype=torch.float32, device=self.device)  # [64,]
         var_64 = var_64.view(-1, 1)  # [64, 1]
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         "--img_size", type=int, default=256, help="output image sizes of the generator"
     )
     parser.add_argument(
-        "--sample_size", type=int, default=30, help="Number of sample generated"
+        "--sample_size", type=int, default=3000, help="Number of sample generated"
     )
     parser.add_argument(
         "--sd", type=int, default=6, help="Standard deviation moved"
@@ -199,11 +199,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_dir", type=str, default='./test_images/', help="Directory for image saving"
     )
+
     parser.add_argument(
         "--augmentation", type=str, default='None', help="Augmentation method"
     )
     args = parser.parse_args()
-
+    args.save_dir = args.save_dir +"key_{}/".format(args.key_len)
     start = time.time()  # count times to complete
     optim = watermark_optimization(args)
     sigma_64, v_cap, u_cap, _, sigma_512, latent_mean, latent_std = optim.PCA()
@@ -220,7 +221,7 @@ if __name__ == "__main__":
     # Get the boundary of alpha
     alpha_bar, _ = torch.lstsq(projection_u,
                                torch.transpose(u_cap, 0, 1))  # solve for init of for alpha = [512x1] tensor
-    alpha_bar = alpha_bar[0:optim.num_main_pc, :]  # solution for alpha = [448 x 1] tensor =>
+    alpha_bar = alpha_bar[0:optim.num_main_pc, :]  # solution for alpha = [448 x 1] tensor
     max_alpha = alpha_bar + 3 * sigma_448
     min_alpha = alpha_bar - 3 * sigma_448
 
@@ -233,7 +234,6 @@ if __name__ == "__main__":
     # Get batched
     alpha_bar = alpha_bar.repeat(1, optim.batch_size)
     sigma_448 = sigma_448.repeat(1, optim.batch_size)
-    sigma_64 = sigma_64.unsqueeze(1)
     sigma_64 = sigma_64.repeat(1, optim.batch_size)
     for iter in tqdm(range(int(number_of_images / optim.batch_size) + 1)):
         rand_alpha = torch.multiply(sigma_448, torch.randn((optim.num_main_pc, optim.batch_size),
@@ -257,7 +257,7 @@ if __name__ == "__main__":
 
     result_file = {
         "sigma_512": sigma_512,
-        "sigma_64": sigma_64[:, 0], #todo fix dimension error
+        "sigma_64": sigma_64[:, 0].view(-1,1),
         "v_cap": v_cap,
         "u_cap": u_cap,
         "latent_mean": latent_mean,
