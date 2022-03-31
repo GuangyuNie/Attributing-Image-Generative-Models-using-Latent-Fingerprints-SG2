@@ -183,10 +183,9 @@ if __name__ == "__main__":
         "--test_dir", type=str, default='./test_images/', help="Directory for image output and acc result"
     )
     args = parser.parse_args()
-
-    optim = watermark_optimization()
     args.test_dir = args.test_dir +"key_{}/".format(args.key_len)
     args.save_dir = args.save_dir +"key_{}/".format(args.key_len)
+    optim = watermark_optimization()
     start = time.time()  # count times to complete
     pca = torch.load(args.test_dir + "pca.pt")
     target = torch.load(args.test_dir + 'test_data.pt')
@@ -222,6 +221,7 @@ if __name__ == "__main__":
     tests = args.num_tests  # Number of image tests
     early_termination = 0.0005  # Terminate the optimization if loss is below this number
     success = 0  # count number of success
+    classification_acc = 0
     acc_total = []
     # Import perceptual loss, cosine similarity and sigmoid function
     cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
@@ -295,7 +295,6 @@ if __name__ == "__main__":
                 loss.append(loss_total.item())
                 a.append(alpha)
                 k.append(key)
-            print('Among {} tests, success rate is: {:.4f}'.format(iter + 1, success / (iter + 1)))
         # If early terminated, pick the last one, else, pick the one with min loss
         if early_terminate == True:
             pass
@@ -322,11 +321,12 @@ if __name__ == "__main__":
         acc_total.append(acc)
         if acc == 1.0:
             success += 1
-        print('Among {} tests, success rate is: {}'.format(iter + 1, success / (iter + 1)))
+        classification_acc = success / (iter + 1)
+        print('Among {} tests, success rate is: {}'.format(iter + 1, classification_acc))
         end = time.time()
         print('time taken for optimization:', end - start)
-        with open(optim.save_dir + 'listfile.txt', 'w') as filehandle:
+        with open(optim.save_dir + 'result.txt', 'w') as filehandle:
             for i, listitem in enumerate(acc_total):
-                filehandle.write('\n {} {}'.format(i,listitem.item()))
+                filehandle.write('\n sample index: {}, key acc: {}, success rate: {}'.format(i,listitem.item(), classification_acc))
 
 
