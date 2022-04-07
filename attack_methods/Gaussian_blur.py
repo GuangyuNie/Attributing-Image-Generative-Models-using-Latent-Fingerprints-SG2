@@ -1,4 +1,4 @@
-import kornia
+import torchvision.transforms as T
 import torch
 import torch.nn as nn
 import numpy as np
@@ -25,7 +25,8 @@ class Gaussian_blur(nn.Module):
         filter_size = (self.filter_size[index], self.filter_size[index])
         sigma = (self.sigma[index], self.sigma[index])
 
-        blurred_image = kornia.filters.gaussian_blur2d(image, filter_size, sigma=sigma).to(device)
+        blurrer = T.GaussianBlur(filter_size, sigma=sigma).to(device)
+        blurred_image = blurrer(image)
 
         return blurred_image
 
