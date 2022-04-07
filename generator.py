@@ -5,6 +5,8 @@ from PIL import Image
 from tqdm import tqdm
 from sklearn.decomposition import PCA
 from model import Generator
+from attack_methods import attack_initializer
+from metric import psnr
 import torchvision.transforms as T
 import time
 import numpy as np
@@ -148,25 +150,11 @@ class watermark_optimization:
 
         return noises
 
-    def augmentation(self, target_img, aug_method='None'):
+    def augmentation(self, target_img):
         """Image augmentation, default is None"""
-        if aug_method == 'blur':
-            blurrer = T.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 5))
-            target_img = blurrer(target_img)
-        if aug_method == 'noise':
-            noise = torch.randn(target_img.size(), device=self.device) * 0.02
-            target_img = target_img + noise
-        if aug_method == 'rotate':
-            rotater = T.RandomRotation(degrees=10)
-            target_img = rotater(target_img)
-        if aug_method == 'None':
-            pass
-        if aug_method == 'crop':
-            crop_size = 250
-            crop = T.CenterCrop(crop_size)
-            pad = T.Pad(int((self.img_size - crop_size) / 2))
-            target_img = crop(target_img)
-            target_img = pad(target_img)
+        if args.augmentation != "None":
+            attack = attack_initializer.attack_initializer(args.augmentation,is_train=False)
+            target_img = attack(target_img)
         return target_img
 
 
@@ -182,14 +170,14 @@ if __name__ == "__main__":
         "--img_size", type=int, default=256, help="output image sizes of the generator"
     )
     parser.add_argument(
-        "--sample_size", type=int, default=3000, help="Number of sample generated"
+        "--sample_size", type=int, default=1000, help="Number of sample generated"
     )
     parser.add_argument(
         "--sd", type=int, default=6, help="Standard deviation moved"
     )
 
     parser.add_argument(
-        "--batch_size", type=int, default=16, help="Batch size for generating images"
+        "--batch_size", type=int, default=12, help="Batch size for generating images"
     )
 
     parser.add_argument(
@@ -201,10 +189,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--augmentation", type=str, default='None', help="Augmentation method"
+        "--augmentation", type=str, default='None', help="Augmentation method: Crop, Noise, Blur, Jpeg, Combination "
     )
     args = parser.parse_args()
-    args.save_dir = args.save_dir +"key_{}/".format(args.key_len)
+
+    args.save_dir = args.save_dir +"aug_{}/".format(args.augmentation) # ToDO: DEL this part when publishing
     start = time.time()  # count times to complete
     optim = watermark_optimization(args)
     sigma_64, v_cap, u_cap, _, sigma_512, latent_mean, latent_std = optim.PCA()
@@ -240,6 +229,7 @@ if __name__ == "__main__":
                                                            device=optim.device)) + alpha_bar
         target_img, target_w0, target_wx = optim.generate_with_alpha(rand_alpha, u_cap_t, sigma_64, v_cap, noise)
         original_image = optim.generate_image(target_w0, noise)
+        target_img = optim.augmentation(target_img)
         w0_image = optim.make_image(original_image)
         wx_image = optim.make_image(target_img)
         for i in range(optim.batch_size):
