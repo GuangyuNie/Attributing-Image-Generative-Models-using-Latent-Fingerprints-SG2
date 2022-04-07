@@ -9,10 +9,8 @@ from torch.utils.cpp_extension import load
 
 module_path = os.path.dirname(__file__)
 upfirdn2d_op = load(
-    "upfirdn2d",
-    sources=[
-        os.path.join(module_path, "upfirdn2d.cpp"),
-        os.path.join(module_path, "upfirdn2d_kernel.cu"),
+    "upfirdn2d_op",
+    sources=["./op/upfirdn2d.cpp","./op/upfirdn2d_kernel.cu"
     ],
 )
 
