@@ -42,6 +42,9 @@ def attack_initializer(attack_method, is_train):
 
         attack = Combination_attack(attacks, is_train)
 
+    elif (attack_method == "Identity"):
+        attack = torch.nn.Identity()
+
     else:
         raise ValueError("Not available Attacks")
 
