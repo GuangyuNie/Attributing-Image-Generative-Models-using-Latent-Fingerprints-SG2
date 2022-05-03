@@ -13,7 +13,7 @@ class Gaussian_blur(nn.Module):
         super(Gaussian_blur, self).__init__()
 
         self.sigma = np.array(kernel_size) / 3.0
-        self.filter_size = [3,9,15,19,25] #This filter size is calculated based on scipy source.
+        self.filter_size = [3,9,15] #This filter size is calculated based on scipy source.
         if (not is_train):
             self.sigma = [self.sigma[-1]]
             self.filter_size = [self.filter_size[-1]]

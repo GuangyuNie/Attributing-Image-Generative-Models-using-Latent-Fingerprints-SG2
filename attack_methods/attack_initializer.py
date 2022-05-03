@@ -15,7 +15,7 @@ def attack_initializer(attack_method, is_train):
 
     elif (attack_method == 'Blur'):
         #terminology would be different kernel_size
-        attack = Gaussian_blur(kernel_size=[1,3,5,7,9], is_train = is_train)
+        attack = Gaussian_blur(kernel_size=[1,3,5], is_train = is_train)
 
     elif(attack_method == "Jpeg"):
         device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
