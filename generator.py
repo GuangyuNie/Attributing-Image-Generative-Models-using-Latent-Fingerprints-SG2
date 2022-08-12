@@ -58,6 +58,8 @@ class watermark_optimization:
             self.truncation = 0.4
             self.biggan_label = args.biggan_label
 
+            self.class_vector = one_hot_from_names([self.biggan_label], batch_size=self.batch_size)
+            self.class_vector = torch.from_numpy(self.class_vector).to(self.device)
             '''
             BigGAN Image generation Code
             # Prepare a input
@@ -167,12 +169,18 @@ class watermark_optimization:
         #     noise_sample = torch.randn(self.batch_size, 512, device=self.device)  # get a bunch of Z
         #     latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
         new_latent = latent_out + self.sd_moved * torch.matmul(torch.transpose(sk_real, 0, 1), v_cap)
-        if self.style_mixing:
-            imgs, _ = self.g_ema(
-                [latent_out,new_latent], noise=noise, input_is_latent=True,inject_index=self.num_block-1)
+        
+        if self.model == 'sg2':
+            if self.style_mixing:
+                imgs, _ = self.g_ema(
+                    [latent_out,new_latent], noise=noise, input_is_latent=True,inject_index=self.num_block-1)
+            else:
+                imgs, _ = self.g_ema(
+                    [new_latent], noise=noise, input_is_latent=True)
+        elif self.model == 'biggan':
+            imgs = self.g_ema(new_latent, self.class_vector, self.truncation)
         else:
-            imgs, _ = self.g_ema(
-                [new_latent], noise=noise, input_is_latent=True)
+            raise ValueError("Not avail model.")
 
         imgs = imgs.detach()
         latent_out = latent_out.detach()
@@ -236,9 +244,16 @@ class watermark_optimization:
 
     def generate_image(self, style_vector, noise):
         """generate image given style vector and noise"""
-        style_vector = style_vector.view(self.batch_size, -1)
-        img_generated, _ = self.g_ema(
-            [style_vector], noise=noise, input_is_latent=True)
+
+        if self.model == 'sg2':
+            style_vector = style_vector.view(self.batch_size, -1)
+            img_generated, _ = self.g_ema(
+                [style_vector], noise=noise, input_is_latent=True)
+        elif self.model == 'biggan':
+            img_generated = self.g_ema(style_vector, self.class_vector, self.truncation)
+        else:
+            raise ValueError("Not avail GANs")
+
         return img_generated
 
     def get_noise(self):
@@ -250,8 +265,8 @@ class watermark_optimization:
         for i in range(3, log_size + 1):
             for _ in range(2):
                 noises.append(torch.tensor(np.random.standard_normal((1, 1, 2 ** i, 2 ** i)), dtype=torch.float32,
-                                           device=self.device))
-
+                                        device=self.device))
+                                        
         return noises
 
     def augmentation(self, target_img):
@@ -277,7 +292,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--biggan_label", type=str, default='dog', required=False, help="Biggan label to generate image"
+        "--biggan_label", type=str, default='golden retriever', required=False, help="Biggan label to generate image"
     )
 
     parser.add_argument(
@@ -349,7 +364,7 @@ if __name__ == "__main__":
 
             target_img, target_w0, target_wx = optim.generate_with_alpha(rand_alpha, u_cap_t, sigma_64, v_cap, noise)
             wx_before_augmentation = optim.make_image(target_img)
-            original_image = optim.generate_image(target_w0, noise)
+            original_image = optim.generate_image(target_w0, noise) #8/12 Start From here
             target_img = optim.augmentation(target_img)
             w0_image = optim.make_image(original_image)
             wx_image = optim.make_image(target_img)
