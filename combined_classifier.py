@@ -14,56 +14,92 @@ import numpy as np
 import argparse
 from attack_methods import attack_initializer
 
+from pytorch_pretrained_biggan import (BigGAN, one_hot_from_names, truncated_noise_sample,
+                                       save_as_images, display_in_terminal)
+
 
 class watermark_optimization:
     def __init__(self, args):
         # Define hyper parameter
         self.device_ids = 0
         self.device = 'cuda:{}'.format(self.device_ids)
-        self.ckpt = args.ckpt
         self.n_mean_latent = 10000  # num of style vector to sample
         self.img_size = args.img_size  # image size
-        self.style_space_dim = 512
         self.key_len = args.key_len
         self.batch_size = args.batch_size
-        self.mapping_network_layer = 8
-        self.num_main_pc = self.style_space_dim - self.key_len  # 512 - 64, num of high var pc
+        
         self.sd_moved = args.sd  # How many standard deviation to move
         self.lr = 0.2
         self.steps = args.steps  # Num steps for optimizing
         self.save_dir = args.save_dir
         self.relu = torch.nn.ReLU()
         self.log_size = int(math.log(self.img_size, 2))
-        self.num_block = self.log_size * 2 - 2
-        self.style_mixing = False
         self.baseline = False
         self.fix_sigma = True
-        # Get generator
-        g_ema = Generator(self.img_size, self.style_space_dim, self.mapping_network_layer)
-        g_ema.load_state_dict(torch.load(self.ckpt)["g_ema"], strict=False)  # load ckpt
-        g_ema.eval()  # set to eval mode
-        self.g_ema = g_ema.to(self.device)  # push to device
+        
+        self.model = args.model
+
+        if self.model == 'sg2':
+            self.ckpt = args.ckpt
+            self.style_space_dim = 512
+            self.mapping_network_layer = 8
+            self.num_block = self.log_size * 2 - 2
+            self.style_mixing = False
+            self.num_main_pc = self.style_space_dim - self.key_len  # 512 - 64, num of high var pc
+            # Get generator
+            g_ema = Generator(self.img_size, self.style_space_dim, self.mapping_network_layer)
+            g_ema.load_state_dict(torch.load(self.ckpt)["g_ema"], strict=False)  # load ckpt
+            g_ema.eval()  # set to eval mode
+            self.g_ema = g_ema.to(self.device)  # push to device
+        elif self.model == 'biggan':
+            model = BigGAN.from_pretrained('biggan-deep-256')
+            model.eval()
+            self.g_ema = model.to(self.device)
+            self.style_space_dim = 128
+            self.num_main_pc = self.style_space_dim - self.key_len  # 128 - keylen, num of high var pc.
+            self.truncation = 0.4
+            self.biggan_label = args.biggan_label
+
+            self.class_vector = one_hot_from_names([self.biggan_label], batch_size=self.batch_size)
+            self.class_vector = torch.from_numpy(self.class_vector).to(self.device)
+
+        else:
+            raise ValueError("Not Avail GANs.")
+
 
     def PCA(self):
         """Do PCA"""
         pca = PCA()
         print("Performing PCA...")
         with torch.no_grad():
-            noise_sample = torch.randn(self.n_mean_latent, 512, device=self.device)  # get a bunch of Z
-            latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
-            latent_out = latent_out.detach().cpu().numpy()
-            pca.fit(latent_out)  # do pca for the style vector data distribution
-            var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
-            pc = pca.components_  # get the pc ranked from high var to low var
-            latent_mean = latent_out.mean(0)
+            if self.model == 'sg2':
+                noise_sample = torch.randn(self.n_mean_latent, self.style_space_dim, device=self.device)  # get a bunch of Z
+                latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
+                latent_out = latent_out.detach().cpu().numpy()
+                pca.fit(latent_out)  # do pca for the style vector data distribution
+                var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+                pc = pca.components_  # get the pc ranked from high var to low var
+                latent_mean = latent_out.mean(0)
+                #latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
+            elif self.model == 'biggan':
+                latent_out = truncated_noise_sample(truncation=self.truncation, batch_size=self.n_mean_latent)
+                
+                pca.fit(latent_out)  # do pca for the style vector data distribution
+                var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+                pc = pca.components_  # get the pc ranked from high var to low var
+                latent_mean = latent_out.mean(0)
+                #latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
+            else:
+                raise ValueError("Not supported GAN model.")
+
         # Get V and U
-        var_64 = torch.tensor(var[self.num_main_pc:512], dtype=torch.float32, device=self.device)  # [64,]
+        var_64 = torch.tensor(var[self.num_main_pc:self.style_space_dim], dtype=torch.float32, device=self.device)  # [64,]
         var_64 = var_64.view(-1, 1)  # [64, 1]
-        var_512 = torch.tensor(var, dtype=torch.float32, device=self.device)  # [64,]
-        var_512 = var_512.view(-1, 1)  # [64, 1]
-        sigma_64 = torch.sqrt(var_64)
-        sigma_512 = torch.sqrt(var_512)
-        v_cap = torch.tensor(pc[self.num_main_pc:512, :], dtype=torch.float32,
+        var_512 = torch.tensor(var, dtype=torch.float32, device=self.device)  # [512,] #todo double check dimension
+        var_512 = var_512.view(-1, 1)  # [512, 1]
+        sigma_64 = torch.sqrt(var_64) #[64,1]
+        sigma_512 = torch.sqrt(var_512) #[512, 1]
+        v_cap = torch.tensor(pc[self.num_main_pc:self.style_space_dim, :], dtype=torch.float32,
                              device=self.device)  # low var pc [64x512]
         u_cap = torch.tensor(pc[0:self.num_main_pc, :], dtype=torch.float32,
                              device=self.device)  # high var pc [448x512]
@@ -98,13 +134,20 @@ class watermark_optimization:
         #     noise_sample = torch.randn(self.batch_size, 512, device=self.device)  # get a bunch of Z
         #     latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
         new_latent = latent_out + self.sd_moved * torch.matmul(torch.transpose(sk_real, 0, 1), v_cap)
-        if self.style_mixing:
-            print('Style mixing...')
-            imgs, _ = self.g_ema(
-                [latent_out,new_latent], noise=noise, input_is_latent=True,inject_index=self.num_block-1)
+        
+
+        if self.model == 'sg2':
+            if self.style_mixing:
+                print('Style mixing...')
+                imgs, _ = self.g_ema(
+                    [latent_out,new_latent], noise=noise, input_is_latent=True,inject_index=self.num_block-1)
+            else:
+                imgs, _ = self.g_ema(
+                    [new_latent], noise=noise, input_is_latent=True)
+        elif self.model == 'biggan':
+            imgs = self.g_ema(new_latent, self.class_vector, self.truncation)
         else:
-            imgs, _ = self.g_ema(
-                [new_latent], noise=noise, input_is_latent=True)
+            raise ValueError("Not avail model.")
 
         imgs = imgs.detach()
         latent_out = latent_out.detach()
@@ -155,9 +198,17 @@ class watermark_optimization:
 
     def generate_image(self, style_vector, noise):
         """generate image given style vector and noise"""
-        style_vector = style_vector.view(1, -1)
-        img_generated, _ = self.g_ema(
-            [style_vector], noise=noise, input_is_latent=True)
+        if self.model == 'sg2':
+            style_vector = style_vector.view(1, -1)
+            img_generated, _ = self.g_ema([style_vector], noise=noise, input_is_latent=True)
+        elif self.model == 'biggan':
+            if style_vector.shape != torch.Size([self.batch_size, self.style_space_dim]):
+                style_vector = style_vector.t()
+
+            img_generated = self.g_ema(style_vector, self.class_vector, self.truncation)
+        else:
+            raise ValueError("Not avail GANs")
+
         return img_generated
 
     def get_new_latent(self, v, s, k, w0):
@@ -283,6 +334,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Image generator for generating perturbed images"
     )
+    # Added for Biggan tansfer
+    parser.add_argument(
+        "--model", type=str, default='sg2', required=True, help="GAN model: sg2 | biggan"
+    )
+
+    parser.add_argument(
+        "--biggan_label", type=str, default='golden retriever', required=False, help="Biggan label to generate image"
+    )
+
     parser.add_argument(
         "--ckpt", type=str, default='./checkpoint/550000.pt', required=False, help="path to the model checkpoint"
     )
@@ -316,17 +376,28 @@ if __name__ == "__main__":
         "--augmentation", type=str, default='None',
         help="Augmentation method: Crop, Noise, Blur, Jpeg, Combination "
     )
+
+    args = parser.parse_args()
+
+
     #shifts = [0,64]
     #shifts = [128,192]
     #shifts = [256,320]
     #shifts = [384,448]
-    # shifts = [0,64,128,256,320,384,448,511]
-    shifts = [448]
+
+    # shifts = [0]
+
+    if args.model == 'sg2':
+        shifts = [0,64,128,256,320,384,448,511]
+    elif args.model == 'biggan':
+        shifts = [0,16,32,64,127]
+    else:
+        raise ValueError("Not avail GAN model")
+
+
     for shift in shifts:
     # for i in range(4):
     #     shift = 0+i
-    #     torch.manual_seed(1346)
-        args = parser.parse_args()
         fixed_sigma = 1
         args.save_dir = args.save_dir + "fixed_sigma_{}/shift_{}/".format(fixed_sigma,shift).replace('.', '')
         start = time.time()  # count times to complete
