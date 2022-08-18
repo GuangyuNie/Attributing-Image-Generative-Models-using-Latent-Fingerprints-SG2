@@ -108,7 +108,8 @@ class watermark_optimization:
 
         latent_mean = torch.tensor(latent_mean, dtype=torch.float32,
                                    device=self.device)  # high var pc [1x512]
-        self.latent_mean = latent_mean.view(-1, 1)
+        self.latent_mean = latent_mean.view(-1, 1) #+ torch.multiply(sigma_512,torch.randn((optim.style_space_dim,1),
+                                                           #device=optim.device))
 
         print("PCA Done")
         return sigma_64, v_cap, u_cap, pc, sigma_512, self.latent_mean
@@ -165,8 +166,8 @@ class watermark_optimization:
         k: 64 digit binary keys
         n: fixed noise
         """
-        # self.key = torch.randint(2, (self.key_len, self.batch_size), device=self.device)  # Get random key
-        self.key = torch.ones((self.key_len, self.batch_size), device=self.device)  # Get random key
+        self.key = torch.randint(2, (self.key_len, self.batch_size), device=self.device)  # Get random key
+        #self.key = torch.ones((self.key_len, self.batch_size), device=self.device)  # Get random key
 
 
         ata = torch.inverse(torch.matmul(u_cap, torch.transpose(u_cap, 0, 1)))
@@ -240,12 +241,12 @@ class watermark_optimization:
                 .numpy()
         )
 
-    def store_results(self, original_image_w0, original_image_wx,reconstructed_w0,reconstucted_wx, watermark_img, iter):
-        store_path_w0 = 'image_before_perturb/'
-        store_path_wx = 'perturbed_image/'
+    def store_results(self, original_image_w0, original_image_wx,watermark_pos,watermark_neg, iter):
+        store_path_w0 = 'watermark_pos/'
+        store_path_wx = 'watermark_neg/'
         store_path_w0_target = 'target_before_perturb/'
         store_path_wx_target = 'target_perturbed/'
-        store_path_watermark = 'watermark_gray/'
+        store_path_data = 'same/'
         isExist = os.path.exists(self.save_dir + store_path_w0)
         if not isExist:
             os.makedirs(self.save_dir + store_path_w0)
@@ -262,26 +263,28 @@ class watermark_optimization:
         if not isExist:
             os.makedirs(self.save_dir + store_path_wx_target)
 
-        isExist = os.path.exists(self.save_dir + store_path_watermark)
+        isExist = os.path.exists(self.save_dir + store_path_data)
         if not isExist:
-            os.makedirs(self.save_dir + store_path_watermark)
+            os.makedirs(self.save_dir + store_path_data)
+
 
         for i in range(self.batch_size):
-            img_name = self.save_dir + store_path_w0_target + "target_w0_{}.png".format(self.batch_size*iter + i)
+            img_name = self.save_dir + store_path_w0_target + f'{iter:06d}.png'
             pil_img = Image.fromarray(original_image_w0[i])
             pil_img.save(img_name)
-            img_name = self.save_dir + store_path_wx_target + "target_wx_{}.png".format(self.batch_size*iter + i)
+            img_name = self.save_dir + store_path_wx_target + f'{iter:06d}.png'
             pil_img = Image.fromarray(original_image_wx[i])
             pil_img.save(img_name)
-            img_name = self.save_dir + store_path_w0 + "recon_w0_{}.png".format(self.batch_size*iter + i)
-            pil_img = Image.fromarray(reconstructed_w0[i])
+            img_name = self.save_dir + store_path_w0 + f'{iter:06d}.png'
+            pil_img = Image.fromarray(watermark_pos[i])
             pil_img.save(img_name)
-            img_name = self.save_dir + store_path_wx + "recon_wx_{}.png".format(self.batch_size*iter + i)
-            pil_img = Image.fromarray(reconstucted_wx[i])
+            img_name = self.save_dir + store_path_wx + f'{iter:06d}.png'
+            pil_img = Image.fromarray(watermark_neg[i])
             pil_img.save(img_name)
-            img_name = self.save_dir + store_path_watermark + "watermark_{}.png".format(self.batch_size*iter + i)
-            pil_img = Image.fromarray(watermark_img[i])
-            pil_img.save(img_name)
+
+
+            img_name = self.save_dir + store_path_data + f'{iter:06d}.npy'
+            np.save(img_name,np.array([0]))
 
 
 
@@ -326,6 +329,7 @@ class watermark_optimization:
 
 
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Image generator for generating perturbed images"
@@ -346,13 +350,13 @@ if __name__ == "__main__":
         "--img_size", type=int, default=256, help="output image sizes of the generator"
     )
     parser.add_argument(
-        "--sample_size", type=int, default=1, help="Number of sample generated"
+        "--sample_size", type=int, default=10, help="Number of sample generated"
     )
     parser.add_argument(
         "--sd", type=int, default=1, help="Standard deviation moved"
     )
     parser.add_argument(
-        "--steps", type=int, default=1, help="Number of optimization steps"
+        "--steps", type=int, default=2000, help="Number of optimization steps"
     )
     parser.add_argument(
         "--batch_size", type=int, default=1, help="Batch size for generating images"
@@ -365,7 +369,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--save_dir", type=str, default='./result_images/', help="Directory for image saving"
+        "--save_dir", type=str, default='./robust_result/', help="Directory for image saving"
     )
 
     parser.add_argument(
@@ -380,6 +384,7 @@ if __name__ == "__main__":
     #shifts = [128,192]
     #shifts = [256,320]
     #shifts = [384,448]
+
     # shifts = [0]
 
     if args.model == 'sg2':
@@ -389,10 +394,10 @@ if __name__ == "__main__":
     else:
         raise ValueError("Not avail GAN model")
 
+
     for shift in shifts:
-    # for i in range(510):
+    # for i in range(4):
     #     shift = 0+i
-        torch.manual_seed(1346)
         fixed_sigma = 1
         args.save_dir = args.save_dir + "fixed_sigma_{}/shift_{}/".format(fixed_sigma,shift).replace('.', '')
         start = time.time()  # count times to complete
@@ -433,8 +438,7 @@ if __name__ == "__main__":
         # Import Latin Hypercube Sampling method
         samlping = scipy_stats.LatinHypercube(d=optim.num_main_pc, centered=True)
         percept = lpips.PerceptualLoss(model="net-lin", net="vgg", use_gpu=optim.device.startswith("cuda"),gpu_ids=[optim.device_ids])
-        rand_alpha = torch.multiply(sigma_448, torch.randn((optim.num_main_pc, optim.batch_size),
-                                                           device=optim.device))
+
         for iter in range(tests):
             loss = []
             a = []
@@ -447,7 +451,8 @@ if __name__ == "__main__":
             # latent_out = latent_out.detach()
             #
             # target_img, target_w0, target_wx = optim.generate_with_latent(latent_out, u_cap_t, sigma_64, v_cap, noise)
-
+            rand_alpha = torch.multiply(sigma_448, torch.randn((optim.num_main_pc, optim.batch_size),
+                                                               device=optim.device))
             target_img, target_w0, target_wx = optim.generate_with_alpha(rand_alpha, u_cap_t, sigma_64, v_cap, noise)
             target_img = optim.augmentation(target_img)
             sample = samlping.random(n=args.n)  # Sample init guesses
@@ -472,12 +477,12 @@ if __name__ == "__main__":
                     loss_1 = optim.get_loss(target_img, estimated_image, loss_func="perceptual")
 
                     loss_total = loss_1 + 0.1 * optim.penalty_1(alpha, max_alpha, min_alpha)
-                    if i > optim.steps / 4 and loss_total > 0.2:
-                        break
-                    if i > optim.steps / 2 and loss_total > 0.1:
-                        break
-                    if cos(w0.view(-1), target_w0.view(-1)) > 0.995: # Todo: Delete all early termination methods
-                        early_terminate = True
+                    # if i > optim.steps / 4 and loss_total > 0.2:
+                    #     break
+                    # if i > optim.steps / 2 and loss_total > 0.1:
+                    #     break
+                    # if cos(w0.view(-1), target_w0.view(-1)) > 0.995: # Todo: Delete all early termination methods
+                    #     early_terminate = True
 
                     # Discrete learning rate decay
                     decay = 0.001
@@ -526,9 +531,13 @@ if __name__ == "__main__":
             target_w0_img = optim.make_image(target_w0_img)
             targe_wx_img = optim.make_image(targe_wx_img)
 
-            watermark_img = 10*np.uint8(np.abs(np.int16(targe_wx_img) - np.int16(target_w0_img)))
-            watermark_img = optim.rgb2gray(watermark_img)
-            watermark_img = np.uint8(watermark_img)
+            watermark_pos = np.uint8((np.int16(targe_wx_img) - np.int16(target_w0_img)).clip(0,255))
+            watermark_neg = np.uint8((np.int16(target_w0_img) - np.int16(targe_wx_img)).clip(0,255))
+            # watermark_pos = optim.rgb2gray(watermark_pos)
+            # watermark_neg = optim.rgb2gray(watermark_neg)
+
+            watermark_pos = np.uint8(watermark_pos)
+            watermark_neg = np.uint8(watermark_neg)
 
 
             w0_reconstructed = optim.make_image(estimated_w0)
@@ -537,7 +546,8 @@ if __name__ == "__main__":
             key_retrived = torch.round(sigmoid(key))
             print('cosine similarity of key:{}, \ncosine similarity of style vector: {}'
                   .format(cos(key_retrived, optim.key), cos(wx.view(-1), target_wx.view(-1))))
-            optim.store_results(target_w0_img,targe_wx_img,w0_reconstructed, wx_reconstructed, watermark_img, iter)
+            # optim.store_results(target_w0_img,targe_wx_img,watermark_pos, watermark_neg, iter)
+            optim.store_results(target_w0_img, targe_wx_img, w0_reconstructed, wx_reconstructed, iter)
             acc = optim.calculate_classification_acc(torch.round(sigmoid(key)), optim.key)
             print(acc)
             acc_total.append(acc)

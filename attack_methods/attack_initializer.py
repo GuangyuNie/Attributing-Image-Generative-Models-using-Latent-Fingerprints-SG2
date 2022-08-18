@@ -11,7 +11,7 @@ def attack_initializer(attack_method, is_train):
         attack = Crop([0.8, 1], is_train)
 
     elif (attack_method == 'Noise'):
-        attack = Gaussian_noise([0, 0.3], is_train)
+        attack = Gaussian_noise([0, 0.1], is_train)
 
     elif (attack_method == 'Blur'):
         #terminology would be different kernel_size
