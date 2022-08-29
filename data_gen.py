@@ -300,7 +300,7 @@ if __name__ == "__main__":
         "--img_size", type=int, default=256, help="output image sizes of the generator"
     )
     parser.add_argument(
-        "--sample_size", type=int, default=10000, help="Number of sample generated"
+        "--sample_size", type=int, default=1000, help="Number of sample generated"
     )
     parser.add_argument(
         "--sd", type=int, default=1, help="Standard deviation moved"
@@ -315,15 +315,15 @@ if __name__ == "__main__":
         "--n", type=int, default=1, help="Number of samples for Latin hypercube sampling method"
     )
     parser.add_argument(
-        "--key_len", type=int, default=64, help="Number of digit for the binary key"
+        "--key_len", type=int, default=32, help="Number of digit for the binary key"
     )
 
     parser.add_argument(
-        "--save_dir", type=str, default='./lpips_data/', help="Directory for image saving"
+        "--save_dir", type=str, default='./fid_test/', help="Directory for image saving"
     )
 
     parser.add_argument(
-        "--augmentation", type=str, default='None',
+        "--augmentation", type=str, default='Noise',
         help="Augmentation method: Crop, Noise, Blur, Jpeg, Combination "
     )
     #shifts = [0,64]
@@ -331,7 +331,7 @@ if __name__ == "__main__":
     #shifts = [256,320]
     #shifts = [384,448]
     # shifts = [0,64,128,256,320,384,448,511]
-    shifts = [128]
+    shifts = [32]
     for shift in shifts:
     # for i in range(4):
     #     shift = 0+i

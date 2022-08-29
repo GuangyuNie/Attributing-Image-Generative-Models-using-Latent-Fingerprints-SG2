@@ -27,7 +27,7 @@ class watermark_optimization:
         self.img_size = args.img_size  # image size
         self.key_len = args.key_len
         self.batch_size = args.batch_size
-        
+
         self.sd_moved = args.sd  # How many standard deviation to move
         self.lr = 0.2
         self.steps = args.steps  # Num steps for optimizing
@@ -36,7 +36,7 @@ class watermark_optimization:
         self.log_size = int(math.log(self.img_size, 2))
         self.baseline = False
         self.fix_sigma = True
-        
+
         self.model = args.model
 
         if self.model == 'sg2':
@@ -83,7 +83,7 @@ class watermark_optimization:
                 #latent_std = sum(((latent_out - latent_mean) ** 2) / self.n_mean_latent) ** 0.5
             elif self.model == 'biggan':
                 latent_out = truncated_noise_sample(truncation=self.truncation, batch_size=self.n_mean_latent)
-                
+
                 pca.fit(latent_out)  # do pca for the style vector data distribution
                 var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
                 pc = pca.components_  # get the pc ranked from high var to low var
@@ -126,15 +126,15 @@ class watermark_optimization:
         n: fixed noise
         """
         # self.key = torch.randint(2, (self.key_len, self.batch_size), device=self.device)  # Get random key
-        # self.key = torch.as_tensor(np.random.randint(low=0,high=2, size=(self.key_len, self.batch_size))).to(self.device)
-        self.key = torch.ones((self.key_len, self.batch_size), device=self.device)  # Get random key
+        self.key = torch.as_tensor(np.random.randint(low=0,high=2, size=(self.key_len, self.batch_size))).to(self.device)
+        #self.key = torch.ones((self.key_len, self.batch_size), device=self.device)  # Get random key
         latent_out = torch.transpose(torch.matmul(u_cap_t, alpha)+self.latent_mean, 0, 1) #to check cosine similarity between alpha used for generating images and reconstructed alpha in classifier code.
         sk_real = torch.multiply(sigma_64, self.key) #considers only positive part.
         # if self.baseline:
         #     noise_sample = torch.randn(self.batch_size, 512, device=self.device)  # get a bunch of Z
         #     latent_out = self.g_ema.style(noise_sample)  # get style vector from Z
         new_latent = latent_out + self.sd_moved * torch.matmul(torch.transpose(sk_real, 0, 1), v_cap)
-        
+
 
         if self.model == 'sg2':
             if self.style_mixing:
@@ -246,7 +246,6 @@ class watermark_optimization:
         store_path_wx = 'watermark_neg/'
         store_path_w0_target = 'target_before_perturb/'
         store_path_wx_target = 'target_perturbed/'
-        store_path_data = 'same/'
         isExist = os.path.exists(self.save_dir + store_path_w0)
         if not isExist:
             os.makedirs(self.save_dir + store_path_w0)
@@ -282,9 +281,6 @@ class watermark_optimization:
             pil_img = Image.fromarray(watermark_neg[i])
             pil_img.save(img_name)
 
-
-            img_name = self.save_dir + store_path_data + f'{iter:06d}.npy'
-            np.save(img_name,np.array([0]))
 
 
 
@@ -362,14 +358,14 @@ if __name__ == "__main__":
         "--batch_size", type=int, default=1, help="Batch size for generating images"
     )
     parser.add_argument(
-        "--n", type=int, default=1, help="Number of samples for Latin hypercube sampling method"
+        "--n", type=int, default=20, help="Number of samples for Latin hypercube sampling method"
     )
     parser.add_argument(
         "--key_len", type=int, default=64, help="Number of digit for the binary key"
     )
 
     parser.add_argument(
-        "--save_dir", type=str, default='./robust_result/', help="Directory for image saving"
+        "--save_dir", type=str, default='./result_images/', help="Directory for image saving"
     )
 
     parser.add_argument(
@@ -398,6 +394,8 @@ if __name__ == "__main__":
     for shift in shifts:
     # for i in range(4):
     #     shift = 0+i
+    #     torch.manual_seed(1346)
+        args = parser.parse_args()
         fixed_sigma = 1
         args.save_dir = args.save_dir + "fixed_sigma_{}/shift_{}/".format(fixed_sigma,shift).replace('.', '')
         start = time.time()  # count times to complete
@@ -477,12 +475,12 @@ if __name__ == "__main__":
                     loss_1 = optim.get_loss(target_img, estimated_image, loss_func="perceptual")
 
                     loss_total = loss_1 + 0.1 * optim.penalty_1(alpha, max_alpha, min_alpha)
-                    # if i > optim.steps / 4 and loss_total > 0.2:
-                    #     break
-                    # if i > optim.steps / 2 and loss_total > 0.1:
-                    #     break
-                    # if cos(w0.view(-1), target_w0.view(-1)) > 0.995: # Todo: Delete all early termination methods
-                    #     early_terminate = True
+                    if i > optim.steps / 4 and loss_total > 0.2:
+                        break
+                    if i > optim.steps / 2 and loss_total > 0.1:
+                        break
+                    if cos(w0.view(-1), target_w0.view(-1)) > 0.995: # Todo: Delete all early termination methods
+                        early_terminate = True
 
                     # Discrete learning rate decay
                     decay = 0.001
