@@ -343,7 +343,7 @@ if __name__ == "__main__":
         "--img_size", type=int, default=256, help="output image sizes of the generator"
     )
     parser.add_argument(
-        "--sample_size", type=int, default=10, help="Number of sample generated"
+        "--sample_size", type=int, default=1000, help="Number of sample generated"
     )
     parser.add_argument(
         "--sd", type=int, default=1, help="Standard deviation moved"
