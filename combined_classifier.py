@@ -125,8 +125,8 @@ class watermark_optimization:
         k: 64 digit binary keys
         n: fixed noise
         """
-        # self.key = torch.randint(2, (self.key_len, self.batch_size), device=self.device)  # Get random key
-        self.key = torch.as_tensor(np.random.randint(low=0,high=2, size=(self.key_len, self.batch_size))).to(self.device)
+        self.key = torch.randint(2, (self.key_len, self.batch_size), device=self.device)  # Get random key
+        # self.key = torch.as_tensor(np.random.randint(low=0,high=2, size=(self.key_len, self.batch_size))).to(self.device)
         #self.key = torch.ones((self.key_len, self.batch_size), device=self.device)  # Get random key
         latent_out = torch.transpose(torch.matmul(u_cap_t, alpha)+self.latent_mean, 0, 1) #to check cosine similarity between alpha used for generating images and reconstructed alpha in classifier code.
         sk_real = torch.multiply(sigma_64, self.key) #considers only positive part.
@@ -262,9 +262,6 @@ class watermark_optimization:
         if not isExist:
             os.makedirs(self.save_dir + store_path_wx_target)
 
-        isExist = os.path.exists(self.save_dir + store_path_data)
-        if not isExist:
-            os.makedirs(self.save_dir + store_path_data)
 
 
         for i in range(self.batch_size):
@@ -384,7 +381,8 @@ if __name__ == "__main__":
     # shifts = [0]
 
     if args.model == 'sg2':
-        shifts = [0,64,128,256,320,384,448,511]
+        # shifts = [0,64,128,256,320,384,448]
+        shifts = [448]
     elif args.model == 'biggan':
         shifts = [0,16,32,64,127]
     else:
@@ -474,7 +472,11 @@ if __name__ == "__main__":
                     estimated_image = optim.generate_image(wx, noise)
                     loss_1 = optim.get_loss(target_img, estimated_image, loss_func="perceptual")
 
-                    loss_total = loss_1 + 0.1 * optim.penalty_1(alpha, max_alpha, min_alpha)
+                    if 1:  # test without constraint
+                        loss_total = loss_1
+                    else:
+                        loss_total = loss_1 + 0.1 * optim.penalty_1(alpha, max_alpha, min_alpha)
+
                     if i > optim.steps / 4 and loss_total > 0.2:
                         break
                     if i > optim.steps / 2 and loss_total > 0.1:
