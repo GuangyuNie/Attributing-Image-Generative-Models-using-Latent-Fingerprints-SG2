@@ -29,7 +29,7 @@ class watermark_optimization:
         self.batch_size = args.batch_size
 
         self.sd_moved = args.sd  # How many standard deviation to move
-        self.lr = 0.2
+        self.lr = args.lr
         self.steps = args.steps  # Num steps for optimizing
         self.save_dir = args.save_dir
         self.relu = torch.nn.ReLU()
@@ -57,7 +57,7 @@ class watermark_optimization:
             self.g_ema = model.to(self.device)
             self.style_space_dim = 128
             self.num_main_pc = self.style_space_dim - self.key_len  # 128 - keylen, num of high var pc.
-            self.truncation = 0.4
+            self.truncation = 1.0
             self.biggan_label = args.biggan_label
 
             self.class_vector = one_hot_from_names([self.biggan_label], batch_size=self.batch_size)
@@ -362,6 +362,10 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--lr", type=float, default=0.2, help="learning rate"
+    )
+
+    parser.add_argument(
         "--save_dir", type=str, default='./result_images/', help="Directory for image saving"
     )
 
@@ -384,7 +388,15 @@ if __name__ == "__main__":
         # shifts = [0,64,128,256,320,384,448]
         shifts = [448]
     elif args.model == 'biggan':
-        shifts = [0,16,32,64,127]
+        #shifts = [0,16,32,64,127]
+        """
+        shifts = [0]
+        shift = args.key_len
+        while shift < 128:
+            shifts.append(shift)
+            shift = shifts[-1] + args.key_len
+        """
+        shifts = [0, 16, 64, 96]
     else:
         raise ValueError("Not avail GAN model")
 
