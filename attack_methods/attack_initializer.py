@@ -15,7 +15,7 @@ def attack_initializer(attack_method, is_train):
 
     elif (attack_method == 'Blur'):
         #terminology would be different kernel_size
-        attack = Gaussian_blur(kernel_size=[1,3,5,7,9], is_train = is_train)
+        attack = Gaussian_blur(sigma=[0.5, 1, 1.5, 2], is_train = is_train)
 
     elif(attack_method == "Jpeg"):
         device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
@@ -25,7 +25,7 @@ def attack_initializer(attack_method, is_train):
         device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
         attacks = []
 
-        attacks.append(Gaussian_blur(kernel_size=[1,3,5,7,9], is_train = is_train))
+        attacks.append(Gaussian_blur(sigma=[0.5, 1, 1.5, 2], is_train = is_train))
         attacks.append(Crop([0.8, 1], is_train))
         attacks.append(Gaussian_noise([0, 0.1], is_train))
         attacks.append(JpegCompression(device))
@@ -36,7 +36,7 @@ def attack_initializer(attack_method, is_train):
         # Combination Attack but Jpeg will be done after 3 attacks finished samples
         # img -> 3 attack -> Save PNG -> Pillow 75 -> Load
         attacks = []
-        attacks.append(Gaussian_blur(kernel_size=[1, 3, 5, 7, 9], is_train=is_train))
+        attacks.append(Gaussian_blur(sigma=[0.5, 1, 1.5, 2], is_train=is_train))
         attacks.append(Crop([0.8, 1], is_train))
         attacks.append(Gaussian_noise([0, 0.1], is_train))
 
