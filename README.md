@@ -4,6 +4,6 @@ Steps:
 
 1. Check env.yml for env installation instruction
 
-2. Run generator.py to generate sample images
+2. Run src/generator.py to generate sample images
 
-3. Run classifier.py to load generated images and retrive the key
+3. Run src/classifier.py to attribute image
