@@ -9,11 +9,11 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 
 ##Uploading test
 class Gaussian_blur(nn.Module):
-    def __init__(self,kernel_size, is_train):
+    def __init__(self,sigma, is_train):
         super(Gaussian_blur, self).__init__()
 
-        self.sigma = np.array(kernel_size) / 3.0
-        self.filter_size = [3,5,25] #This filter size is calculated based on scipy source.
+        self.sigma = np.array(sigma)
+        self.filter_size = [3,5,25]
         if (not is_train):
             self.sigma = [self.sigma[-1]]
             self.filter_size = [self.filter_size[-1]]
