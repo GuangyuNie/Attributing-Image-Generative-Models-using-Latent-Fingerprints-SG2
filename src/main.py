@@ -54,7 +54,6 @@ def optimization(target_img):
         key = key_init_guess()
         key.requires_grad = True
         optimizer = torch.optim.Adam([alpha, key], lr=opt.lr)
-        early_terminate = False # todo delete this
         for i in tqdm(range(opt.steps)):
             generator.g_ema.zero_grad()
             optimizer.zero_grad()
@@ -76,23 +75,16 @@ def optimization(target_img):
                 print("Perceptual loss: {:.6f}".format(loss_total.item()))
                 print('bit-wise acc: {:.4f}'.format(acc))
 
-        acc = calculate_classification_acc(torch.round(sigmoid(key)), generator.key)
-        if acc == 1:  # Todo: Delete all early termination methods
-            early_terminate = True
-            break
-        else:
-            loss.append(loss_total.item())
-            a.append(alpha)
-            k.append(key)
 
-        # If early terminated, pick the last one, else, pick the one with min loss
-        if early_terminate == True:
-            pass
-        else:
-            min_item = min(loss)
-            index = loss.index(min_item)
-            alpha = a[index]
-            key = k[index]
+        loss.append(loss_total.item())
+        a.append(alpha)
+        k.append(key)
+
+
+    min_item = min(loss)
+    index = loss.index(min_item)
+    alpha = a[index]
+    key = k[index]
     acc = calculate_classification_acc(torch.round(sigmoid(key)), generator.key)
     return alpha, key, acc
 
@@ -120,7 +112,6 @@ if __name__ == "__main__":
     noise = get_noise()
 
     tests = opt.sample_size  # Number of image tests
-    early_termination = 0.0005  # Terminate the optimization if loss is below this number #todo: delete this
     acc_total = []
     success = 0  # count number of success
     # Import Latin Hypercube Sampling method

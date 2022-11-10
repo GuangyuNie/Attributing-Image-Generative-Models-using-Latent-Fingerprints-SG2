@@ -1,4 +1,3 @@
-from .Crop import Crop
 from .Gaussian_blur import Gaussian_blur
 from .Gaussian_noise import Gaussian_noise
 #from .Jpeg_compression import JpegCompression

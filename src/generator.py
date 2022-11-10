@@ -106,6 +106,10 @@ class GetGen:
         new_latent = new_latent.detach()
         return imgs, original_latent, new_latent, self.key
 
+    def make_dir(self,sigma, shift):
+        save_dir = opt.save_dir + "{}/fixed_sigma_{}/shift_{}/".format(opt.augmentation, sigma, shift).replace(
+            '.', '')
+        return save_dir
 
     def generate_with_latent(self, u_cap, latent_out, u_cap_t, sigma_64, v_cap, noise):
         """
@@ -203,23 +207,18 @@ if __name__ == "__main__":
     #     shift = 0+i
     #     torch.manual_seed(1346)
     fixed_sigma = opt.sigma
-    save_dir = opt.save_dir + "{}/fixed_sigma_{}/shift_{}/".format(opt.augmentation, fixed_sigma, shift).replace(
-        '.', '')
-    isExist = os.path.exists(save_dir)
-    if not isExist:
-        os.makedirs(save_dir)
+    save_dir = save_config(generator.make_dir(fixed_sigma,shift))
     start = time.time()  # count times to complete
-    sigma_64, _, _, pc, sigma_512, latent_mean = get_pca.perform_pca()
-    v_cap = torch.tensor(pc[shift:shift + opt.key_len, :], dtype=torch.float32,
+    v_cap = torch.tensor(generator.pc[shift:shift + opt.key_len, :], dtype=torch.float32,
                          device=opt.device)  # low var pc [64x512]
-    u_cap = torch.cat([pc[0:shift, :], pc[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
+    u_cap = torch.cat([generator.pc[0:shift, :], generator.pc[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
     u_cap_t = torch.transpose(u_cap, 0, 1)
-    sigma_64 = fixed_sigma * torch.ones_like(sigma_64)
-    sigma_448 = torch.cat([sigma_512[0:shift, :], sigma_512[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
+    sigma_64 = fixed_sigma * torch.ones_like(generator.sigma_64)
+    sigma_448 = torch.cat([generator.sigma_512[0:shift, :], generator.sigma_512[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
 
     # Get the boundary of alpha
-    max_alpha = 3 * sigma_512
-    min_alpha = -3 * sigma_512
+    max_alpha = 3 * generator.sigma_512
+    min_alpha = -3 * generator.sigma_512
     max_alpha = torch.cat([max_alpha[0:shift, :], max_alpha[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
     min_alpha = torch.cat([min_alpha[0:shift, :], min_alpha[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
     noise = get_noise()
@@ -247,4 +246,4 @@ if __name__ == "__main__":
     for iter in range(tests):
         original_image, watermarked_image, perturbed_image = generator.get_watermarked_image()
 
-        store_results(save_dir,iter,original_image_wx=watermarked_image)
+        store_results(save_dir,iter,original_image_w0=original_image,original_image_wx=watermarked_image)
