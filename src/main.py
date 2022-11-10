@@ -27,8 +27,7 @@ def get_alpha_bound(sigma_512,shift):
     min_alpha = torch.cat([min_alpha[0:shift, :], min_alpha[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
     return max_alpha,min_alpha
 
-def get_uv(shift):
-    sigma_64, _, _, pc, sigma_512, latent_mean = get_pca.perform_pca()
+def get_uv(shift,pc,sigma_64,sigma_512):
 
     v_cap = torch.tensor(pc[shift:shift + opt.key_len, :], dtype=torch.float32,
                          device=opt.device)  # low var pc [64x512]
@@ -38,7 +37,7 @@ def get_uv(shift):
     sigma_448 = torch.cat([sigma_512[0:shift, :], sigma_512[shift + opt.key_len:generator.style_space_dim, :]], dim=0)
     sigma_448 = sigma_448.repeat(1, opt.batch_size)
     sigma_64 = sigma_64.repeat(1, opt.batch_size)
-    return sigma_64,sigma_448,sigma_512,u_cap,u_cap_t,v_cap,latent_mean
+    return sigma_64,sigma_448,u_cap,u_cap_t,v_cap
 
 def get_lr(iter):
     return opt.lr * math.exp(-0.001 * (iter + 1))
@@ -59,28 +58,24 @@ def optimization(target_img):
         for i in tqdm(range(opt.steps)):
             generator.g_ema.zero_grad()
             optimizer.zero_grad()
-            w0 = torch.matmul(torch.transpose(u_cap, 0, 1), alpha) + latent_mean
+            w0 = torch.matmul(torch.transpose(u_cap, 0, 1), alpha) + generator.latent_mean
             wx = generator.get_new_latent(v_cap, sigma_64, sigmoid(key), w0)
             estimated_image = generator.generate_image(wx, noise)
             loss_1 = get_loss(target_img, estimated_image, loss_func="perceptual")
 
             loss_total = loss_1 + 0.1 * alpha_bound(alpha, max_alpha, min_alpha)
-            # if i > optim.steps / 4 and  cos(w0.view(-1), target_w0.view(-1)) < 0.3:
-            #     break
-            # if i > optim.steps / 2 and  cos(w0.view(-1), target_w0.view(-1)) < 0.5:
-            #     break
-            # Discrete learning rate decay
 
             optimizer.param_groups[0]["lr"] = get_lr(i)
 
             loss_total.backward()
             optimizer.step()
             l2 = torch.dist(w0.view(-1), target_w0.view(-1), p=2)
+            acc = calculate_classification_acc(torch.round(sigmoid(key)), generator.key)
 
             if (i + 1) % 100 == 0:
                 print("Perceptual loss: {:.6f}".format(loss_total.item()))
-                acc = calculate_classification_acc(torch.round(sigmoid(key)), generator.key)
                 print('bit-wise acc: {:.4f}'.format(acc))
+
         acc = calculate_classification_acc(torch.round(sigmoid(key)), generator.key)
         if acc == 1:  # Todo: Delete all early termination methods
             early_terminate = True
@@ -119,9 +114,9 @@ if __name__ == "__main__":
 
 
 
-    sigma_64, sigma_448, sigma_512, u_cap, u_cap_t, v_cap,latent_mean = get_uv(shift)
+    sigma_64,sigma_448,u_cap,u_cap_t,v_cap= get_uv(shift,generator.pc,generator.sigma_64,generator.sigma_512)
     # Get the boundary of alpha
-    max_alpha, min_alpha = get_alpha_bound(sigma_512,shift)
+    max_alpha, min_alpha = get_alpha_bound(generator.sigma_512,shift)
     noise = get_noise()
 
     tests = opt.sample_size  # Number of image tests

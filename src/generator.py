@@ -35,7 +35,7 @@ class GetGen:
         self.fix_sigma = True
         self.model = opt.model
         get_pca = GetPCA()
-        _, _, _, _, _, self.latent_mean = get_pca.perform_pca()
+        self.sigma_64, self.v_cap, self.u_cap, self.pc, self.sigma_512, self.latent_mean = get_pca.perform_pca()
 
 
         if self.model == 'sg2':

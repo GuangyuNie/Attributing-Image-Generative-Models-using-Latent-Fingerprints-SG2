@@ -25,11 +25,10 @@ parser.add_argument("--sigma", type=float, default=1.0, help="perturb strength")
 
 # Robust test
 parser.add_argument("--augmentation", type=str, default='None',
-                    help="Augmentation method: Crop, Noise, Blur, Jpeg, Combination ")
+                    help="Augmentation method:Noise, Blur, Jpeg, Combination ")
 parser.add_argument("--jpeg_quality", type=int, default=50, help="jpeg quality")
 parser.add_argument("--noise_sigma", type=float, default=0.1, help="Gaussian noise standard deviation")
 parser.add_argument("--blur_sigma", type=float, default=0.5, help="blur filter standard deviation")
-parser.add_argument("--crop_percentage", type=int, default=95, help="cropping percentage, between 0-100")
 
 
 

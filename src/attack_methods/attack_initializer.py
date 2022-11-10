@@ -12,10 +12,7 @@ from params import opt
 
 def attack_initializer(attack_method, is_train):
 
-    if (attack_method == 'Crop'):
-        attack = Crop([opt.crop_percentage], is_train)
-
-    elif (attack_method == 'Noise'):
+    if (attack_method == 'Noise'):
         attack = Gaussian_noise([opt.noise_sigma], is_train)
 
     elif (attack_method == 'Blur'):
@@ -24,11 +21,8 @@ def attack_initializer(attack_method, is_train):
         device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
         attack = DiffJPEG(height=opt.img_size, width=opt.img_size, differentiable=is_train, quality=opt.jpeg_quality).to(device)
     elif (attack_method == 'Combination'):
-        device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
         attacks = []
-
         attacks.append(Gaussian_blur(sigma=[opt.blur_sigma], is_train = is_train))
-        # attacks.append(Crop([0.9, 1], is_train))
         attacks.append(Gaussian_noise([opt.noise_sigma], is_train))
         attacks.append(DiffJPEG(height=opt.image_size, width=opt.image_size, differentiable=is_train, quality=opt.jpeg_quality))
 
