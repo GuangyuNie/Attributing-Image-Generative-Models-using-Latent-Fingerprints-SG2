@@ -8,6 +8,9 @@ import numpy as np
 from params import opt
 import custom_lpips
 
+import datetime
+import yaml
+
 
 
 percept = custom_lpips.PerceptualLoss(model="net-lin", net="vgg", use_gpu=opt.device)
@@ -16,6 +19,19 @@ relu = torch.nn.ReLU()
 def key_init_guess():
     """init guess for key, all zeros (before entering sigmoid function)"""
     return torch.zeros((opt.key_len, 1), device=opt.device)
+
+def save_config(save_dir):
+    """standard saving module, input save_dir, create folder and save the config, and return time-varient save dir"""
+    now = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")  # get time
+    save_dir = os.path.join(save_dir, now, '')
+    sampling_conf = vars(opt)
+    isExist = os.path.exists(save_dir)
+    if not isExist:
+        os.makedirs(save_dir)
+    sampling_file = os.path.join(save_dir, "sampling_config.yaml")
+    with open(sampling_file, 'w') as f:
+        yaml.dump(sampling_conf, f, default_flow_style=False)
+    return save_dir
 
 
 def calculate_classification_acc(approx_key, target_key):

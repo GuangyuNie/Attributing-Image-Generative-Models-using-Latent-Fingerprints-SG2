@@ -2,10 +2,13 @@ from .Crop import Crop
 from .Gaussian_blur import Gaussian_blur
 from .Gaussian_noise import Gaussian_noise
 #from .Jpeg_compression import JpegCompression
-from DiffJPEG_master.DiffJPEG import DiffJPEG
+from .DiffJPEG_master.DiffJPEG import DiffJPEG
 from .Combination import Combination_attack
 import torch
-from ..params import opt
+
+import sys
+sys.path.append("..")
+from params import opt
 
 def attack_initializer(attack_method, is_train):
 

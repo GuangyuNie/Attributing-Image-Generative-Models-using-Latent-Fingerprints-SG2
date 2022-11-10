@@ -7,6 +7,7 @@ from model import Generator
 from torch.nn import functional as F
 import scipy.stats.qmc as scipy_stats
 import time
+import datetime
 import numpy as np
 from attack_methods import attack_initializer
 from params import opt

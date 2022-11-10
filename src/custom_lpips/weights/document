@@ -1,4 +1,0 @@
-1.1 - noise = 0.1 shift = 448
-1.2 - noise = 0.3 shift = 448
-1.3 - noise = 0.3 shift = 448, fine tune filter
-1.4 - noise = 0.1 shift = 128

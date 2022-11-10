@@ -9,6 +9,7 @@ import time
 import numpy as np
 from attack_methods import attack_initializer
 import scipy.stats.qmc as scipy_stats
+import datetime
 
 from params import opt
 from PCA import GetPCA
@@ -17,10 +18,6 @@ from utils import *
 def make_dir(sigma,shift):
     save_dir = opt.save_dir + "{}/fixed_sigma_{}/shift_{}/".format(opt.augmentation, sigma, shift).replace(
         '.', '')
-    isExist = os.path.exists(save_dir)
-    if not isExist:
-        os.makedirs(save_dir)
-
     return save_dir
 
 def get_alpha_bound(sigma_512,shift):
@@ -92,7 +89,6 @@ def optimization(target_img):
             loss.append(loss_total.item())
             a.append(alpha)
             k.append(key)
-            l2_total.append(l2)
 
         # If early terminated, pick the last one, else, pick the one with min loss
         if early_terminate == True:
@@ -105,36 +101,6 @@ def optimization(target_img):
     acc = calculate_classification_acc(torch.round(sigmoid(key)), generator.key)
     return alpha, key, acc
 
-def store_result(acc):
-    acc_total = []
-    success = 0  # count number of success
-
-    target_w0_img = generator.generate_image(target_w0, noise)
-    target_w0_img = make_image(target_w0_img)
-
-    target_wx_img = generator.generate_image(target_wx, noise)
-    targe_wx_img = make_image(target_img)
-
-    perturbed = generator.augmentation(target_wx_img)
-    perturbed = make_image(perturbed)
-
-    # watermark_pos = np.uint8((np.int16(targe_wx_img) - np.int16(target_w0_img)).clip(0, 255))
-    # watermark_neg = np.uint8((np.int16(target_w0_img) - np.int16(targe_wx_img)).clip(0, 255))
-    #
-    # watermark_pos = np.uint8(watermark_pos)
-    # watermark_neg = np.uint8(watermark_neg)
-
-    store_results(save_dir,iter,target_w0_img, targe_wx_img, perturbed)
-    acc_total.append(acc)
-    if acc == 1.0:
-        success += 1
-    classification_acc = success / (iter + 1)
-    # print('Among {} tests, success rate is: {}'.format(iter + 1, classification_acc))
-    # print('time taken for optimization:', end - start)
-    with open(save_dir + 'result.txt', 'w') as filehandle:
-        for i, listitem in enumerate(acc_total):
-            filehandle.write('\n sample index: {}, bit acc: {}, attribution acc: {}'.format(i, listitem.item(),
-                                                                                          classification_acc))
 
 
 if __name__ == "__main__":
@@ -149,7 +115,10 @@ if __name__ == "__main__":
     sigmoid = torch.nn.Sigmoid()
     samlping = scipy_stats.LatinHypercube(d=generator.num_main_pc, centered=True)
 
-    save_dir = make_dir(fixed_sigma,shift)
+    save_dir = save_config(make_dir(fixed_sigma,shift))
+
+
+
     sigma_64, sigma_448, sigma_512, u_cap, u_cap_t, v_cap,latent_mean = get_uv(shift)
     # Get the boundary of alpha
     max_alpha, min_alpha = get_alpha_bound(sigma_512,shift)
@@ -157,18 +126,43 @@ if __name__ == "__main__":
 
     tests = opt.sample_size  # Number of image tests
     early_termination = 0.0005  # Terminate the optimization if loss is below this number #todo: delete this
-
+    acc_total = []
+    success = 0  # count number of success
     # Import Latin Hypercube Sampling method
     for iter in range(tests):
         loss = []
         a = []
         k = []
-        cosine_total = []
-        l2_total = []
         rand_alpha = torch.multiply(sigma_448, torch.randn((generator.num_main_pc, opt.batch_size),device=opt.device))
         target_img, target_w0, target_wx, true_key = generator.generate_with_alpha(rand_alpha, u_cap_t, sigma_64, v_cap, noise)
-        target_img = generator.augmentation(target_img)
+        target_img = generator.augmentation(target_img).detach()
         alpha, key, acc = optimization(target_img)
 
         print('sample: {}, attribution accuracy: {}'.format(iter,acc))
-        store_result(acc)
+
+        target_w0_img = generator.generate_image(target_w0, noise)
+        target_w0_img = make_image(target_w0_img)
+
+        target_wx_img = generator.generate_image(target_wx, noise)
+        targe_wx_img = make_image(target_img)
+
+        perturbed = generator.augmentation(target_wx_img)
+        perturbed = make_image(perturbed)
+
+        # watermark_pos = np.uint8((np.int16(targe_wx_img) - np.int16(target_w0_img)).clip(0, 255))
+        # watermark_neg = np.uint8((np.int16(target_w0_img) - np.int16(targe_wx_img)).clip(0, 255))
+        #
+        # watermark_pos = np.uint8(watermark_pos)
+        # watermark_neg = np.uint8(watermark_neg)
+
+        store_results(save_dir, iter, target_w0_img, targe_wx_img, perturbed)
+        acc_total.append(acc)
+        if acc == 1.0:
+            success += 1
+        classification_acc = success / (iter + 1)
+        # print('Among {} tests, success rate is: {}'.format(iter + 1, classification_acc))
+        # print('time taken for optimization:', end - start)
+        with open(save_dir + 'result.txt', 'w') as filehandle:
+            for i, listitem in enumerate(acc_total):
+                filehandle.write('\n sample index: {}, bit acc: {}, attribution acc: {}'.format(i, listitem.item(),
+                                                                                                classification_acc))
