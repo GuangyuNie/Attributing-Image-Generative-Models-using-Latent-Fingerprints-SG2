@@ -12,8 +12,8 @@ class Jpeg(nn.Module):
             self.attack = DiffJPEG(height=image_size, width=image_size, differentiable=is_train, quality=param)
 
     def forward(self, image):
-        # image = (image + 1.) / 2. #To put into Jpeg attack
+        image = (image + 1.) / 2. #To put into Jpeg attack
         image = self.attack(image) #output is in [0,1]
-        # image = (image * 2.) - 1. #Resacling
+        image = (image * 2.) - 1. #Resacling
 
         return image
