@@ -22,35 +22,38 @@ large-scale models. We use StyleGAN2 and the latent diffusion model to demonstra
 ## Checkpoints
 
 We experiment on FFHQ, AFHQ-cat, and AFHQ-dog. 
-Checkpoints can be downloaded below. Put them under src/checkpoint/
-- Add checkpoint google drive link(or as hyperlink)
+Checkpoints can be downloaded below.\
+Make checkpoint folder in src folder and put weights under src/checkpoint/.\
+Pretrained Weights:\
+[FFHQ](https://github.com/rosinality/stylegan2-pytorch)\
+[AFHQ](https://github.com/NVlabs/stylegan2-ada)
 
 ## Generate watermarked image
 
 - Run, e.g.,
   ```
-  python generator.py --model --sg2 --save_dir '../result/' 
-  --key_len 64 --sigma 1 --shift 448
+  python generator.py --model sg2 --save_dir '../result/' --key_len 64 --sigma 1 --shift 448
   ```
   where
 - `save_dir`: Directory for output saving
 - `key_len`: Digits of binary key, higher key length will increase the key capacity. For key length = 64, the key capacity would be 2^64
 - `sigma` : Watermarking perturbation strength
-- `shift` : Initial index of consecutive principal axis ranked from a descent order based on it's corresponding varience. 
-E.g. the set of editing direction V follows V = PC[shift:shift+key_len]
+- `shift` : Initial index of consecutive principal axis ranked from a descent order based on it's corresponding variance. 
+E.g. the set of editing direction V follows V = PC[shift:shift+key_len]  
+After running the code, watermarked images will be saved under result folder. 
 
 ## Attribution of watermarked image
 
 - Run, e.g.,
   ```
-  python main.py --model --sg2 --save_dir '../result/' --key_len 64 
-  --sigma 1 --shift 448 --step 2000 --sample_size 100 --n 20
+  python main.py --model sg2 --save_dir '../result/' --key_len 64 --sigma 1 --shift 448 --step 2000 --sample_size 100 --n 20
   ```
   besides the argumentation from above, we have additional argument:
 - `step`: optimization steps to attribute watermarked image
 - `sample_size`: number of attribution tests user would like to perform
 - `n`: Number of initial guess from Latin Hypercube sampling method
 
+The result will be saved under result folder.
 
 
 
