@@ -1,4 +1,4 @@
-## Attributing Generative Models using Latent Fingerprints
+## Attributing Image Generative Models using Latent Fingerprints
 
 ![Teaser image](./image/fig1.png)
 **Abstract:** Generative models have enabled the creation of
