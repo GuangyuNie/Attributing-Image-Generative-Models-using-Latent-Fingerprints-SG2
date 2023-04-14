@@ -1,7 +1,7 @@
 ## Attributing Generative Models using Latent Fingerprints
 
 ![Teaser image](./image/fig1.png)
-Abstract: Generative models have enabled the creation of
+**Abstract:** Generative models have enabled the creation of
 contents that are indistinguishable from those
 taken from the nature. Open-source development
 of such models raised concerns about the risks
