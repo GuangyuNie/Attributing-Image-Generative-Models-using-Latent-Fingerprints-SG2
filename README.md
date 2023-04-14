@@ -5,23 +5,11 @@ Abstract: Generative models have enabled the creation of
 contents that are indistinguishable from those
 taken from the nature. Open-source development
 of such models raised concerns about the risks
-in their misuse for malicious purposes. One po-
-tential risk mitigation strategy is to attribute gen-
-erative models via fingerprinting. Current fin-
-gerprinting methods exhibit significant tradeoff
-between robust attribution accuracy and genera-
-tion quality, and also lack designing principles
+in their misuse for malicious purposes. One potential risk mitigation strategy is to attribute generative models via fingerprinting. Current fingerprinting methods exhibit significant tradeoff
+between robust attribution accuracy and generation quality, and also lack designing principles
 to improve this tradeoff. This paper investigates
-the use of latent semantic dimensions as finger-
-prints, from where we can analyze the effects of
-design variables, including the choice of finger-
-printing dimensions, strength, and capacity, on
-the accuracy-quality tradeoff. Compared with pre-
-vious SOTA, our method requires minimum com-
-pute and is more applicable to large-scale models.
-We use StyleGAN2 and the latent diffusion model
-to demonstrate the efficacy of our method. Codes
-are available in supplementary material.
+the use of latent semantic dimensions as fingerprints, from where we can analyze the effects of
+design variables, including the choice of fingerprinting dimensions, strength, and capacity, on the accuracy-quality tradeoff. Compared with previous SOTA, our method requires minimum compute and is more applicable to large-scale models.We use StyleGAN2 and the latent diffusion modelto demonstrate the efficacy of our method.
 
 ## Prerequisites
 
