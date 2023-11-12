@@ -1,4 +1,4 @@
-## Attributing Image Generative Models using Latent Fingerprints
+## Attributing Image Generative Models using Latent Fingerprints(SG2 repository)
 
 ![Teaser image](./image/fig1.png)
 **Abstract:** Generative models have enabled the creation of contents that are indistinguishable from those taken from nature. 
@@ -51,5 +51,8 @@ After running the code, fingerprinted images will be saved under result folder.
 - `n`: Number of initial guess from Latin Hypercube sampling method
 
 The result will be saved under result folder.
+
+## Note:
+-LDM version can be found [here](https://github.com/GuangyuNie/Attributing-Image-Generative-Models-using-Latent-Fingerprints-latent-LDM)
 
 
